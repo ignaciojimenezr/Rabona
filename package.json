@@ -1,0 +1,36 @@
+{
+  "name": "openai-app-sdk",
+  "version": "1.0.0",
+  "description": "SDK for building OpenAI Apps with widgets, tools, and HTTP endpoints",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "openai",
+    "sdk",
+    "app",
+    "actions",
+    "tools",
+    "widgets"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/cors": "^2.8.17",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0"
+  }
+}
+

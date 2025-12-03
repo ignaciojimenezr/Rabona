@@ -27,6 +27,7 @@ export interface ServerConfig {
   port: number;
   host?: string;
   cors?: boolean;
+  squadDataPath?: string;
 }
 
 export interface OpenAIAction {
@@ -41,4 +42,17 @@ export interface OpenAIAction {
     };
   };
 }
+
+export interface PlayerRecord {
+  Name: string;
+  Team: string;
+  Country: string;
+  Position: string;
+  League: string;
+  'Shirt Number'?: string;
+  Priority?: string | number; // Priority/Difficulty: 1 = easy/famous, 2 = medium, 3 = hard/less famous
+}
+
+// Game types are exported from GameEngine.ts
+export type { Game, GameCell, CellMark, CategoryType } from './GameEngine.js';
 

@@ -1,8 +1,11 @@
 import express, { type Express, type Request, type Response } from 'express';
 import cors from 'cors';
 import type { ServerConfig } from './types.js';
+import type { Game } from './GameEngine.js';
 import { WidgetRegistry } from './WidgetRegistry.js';
 import { ToolRegistry } from './ToolRegistry.js';
+import { SquadStore } from './SquadStore.js';
+import { GameEngine } from './GameEngine.js';
 
 /**
  * OpenAI App Server - Main server class
@@ -19,6 +22,9 @@ export class OpenAIServer {
   private app: Express;
   private widgetRegistry: WidgetRegistry;
   private toolRegistry: ToolRegistry;
+  private squadStore: SquadStore;
+  private gameEngine: GameEngine;
+  private activeGames: Map<string, Game> = new Map();
   private config: ServerConfig;
   private server: any;
 
@@ -27,6 +33,8 @@ export class OpenAIServer {
     this.app = express();
     this.widgetRegistry = new WidgetRegistry();
     this.toolRegistry = new ToolRegistry();
+    this.squadStore = new SquadStore(config.squadDataPath);
+    this.gameEngine = new GameEngine(this.squadStore);
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -37,6 +45,9 @@ export class OpenAIServer {
    */
   private setupMiddleware(): void {
     this.app.use(express.json());
+    
+    // Serve static files from public directory
+    this.app.use(express.static('public'));
     
     if (this.config.cors !== false) {
       this.app.use(cors());
@@ -92,90 +103,89 @@ export class OpenAIServer {
       }
     });
 
-    // OpenAI Actions endpoint (for OpenAI App integration)
+    // OpenAI App manifest endpoint (GET)
     this.app.get('/.well-known/openai-actions', (_req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'application/json');
       res.json({
         widgets: this.widgetRegistry.getManifest().widgets,
         tools: this.toolRegistry.getOpenAIActions(),
       });
     });
 
-    // MCP Server endpoint
-    this.app.post('/mcp', async (req: Request, res: Response) => {
+    // Player data endpoint
+    this.app.get('/players', (req: Request, res: Response) => {
+      const filters = {
+        Name: (req.query.name as string) || undefined,
+        Team: (req.query.team as string) || undefined,
+        Country: (req.query.country as string) || undefined,
+        Position: (req.query.position as string) || undefined,
+        League: (req.query.league as string) || undefined,
+      };
+
+      const players = this.squadStore.search(filters);
+      res.json({ count: players.length, players });
+    });
+
+    this.app.post('/players/reload', (_req: Request, res: Response) => {
+      this.squadStore.load();
+      res.json({ status: 'reloaded', count: this.squadStore.getAll().length });
+    });
+
+    // Game endpoints
+    this.app.post('/games/new', (req: Request, res: Response) => {
       try {
-        const { method, params } = req.body;
-
-        switch (method) {
-          case 'tools/list':
-            res.json({
-              tools: this.toolRegistry.getOpenAIActions(),
-            });
-            break;
-
-          case 'tools/call':
-            const { name, arguments: toolArgs } = params;
-            if (!this.toolRegistry.has(name)) {
-              return res.status(404).json({ 
-                error: { 
-                  code: -32601, 
-                  message: `Tool "${name}" not found` 
-                } 
-              });
-            }
-            const result = await this.toolRegistry.execute(name, toolArgs || {});
-            res.json({ content: [{ type: 'text', text: JSON.stringify(result) }] });
-            break;
-
-          case 'resources/list':
-            // Return widgets as resources
-            res.json({
-              resources: this.widgetRegistry.getAll().map(widget => ({
-                uri: widget.url,
-                name: widget.name,
-                description: widget.description,
-                mimeType: 'text/html',
-              })),
-            });
-            break;
-
-          case 'resources/read':
-            const { uri } = params;
-            const widget = this.widgetRegistry.getAll().find(w => w.url === uri);
-            if (!widget) {
-              return res.status(404).json({ 
-                error: { 
-                  code: -32601, 
-                  message: `Resource "${uri}" not found` 
-                } 
-              });
-            }
-            res.json({ 
-              contents: [{ 
-                uri: widget.url, 
-                mimeType: 'text/html', 
-                text: JSON.stringify(widget) 
-              }] 
-            });
-            break;
-
-          default:
-            res.status(400).json({ 
-              error: { 
-                code: -32601, 
-                message: `Method "${method}" not supported` 
-              } 
-            });
-        }
+        const game = this.gameEngine.generateGame();
+        this.activeGames.set(game.id, game);
+        res.json(game);
       } catch (error: any) {
-        console.error('MCP request error:', error);
-        res.status(500).json({ 
-          error: { 
-            code: -32603, 
-            message: 'Internal error', 
-            data: error.message 
-          } 
-        });
+        res.status(500).json({ error: error.message });
       }
+    });
+
+    this.app.get('/games/:id', (req: Request, res: Response) => {
+      const game = this.activeGames.get(req.params.id);
+      if (!game) {
+        return res.status(404).json({ error: 'Game not found' });
+      }
+      res.json(game);
+    });
+
+    this.app.post('/games/:id/move', (req: Request, res: Response) => {
+      const game = this.activeGames.get(req.params.id);
+      if (!game) {
+        return res.status(404).json({ error: 'Game not found' });
+      }
+      const { row, col } = req.body;
+      if (typeof row !== 'number' || typeof col !== 'number') {
+        return res.status(400).json({ error: 'Row and col must be numbers' });
+      }
+      const result = this.gameEngine.makeUserMove(game, row, col);
+      if (result.success) {
+        this.activeGames.set(game.id, result.game);
+        res.json(result.game);
+      } else {
+        res.status(400).json({ error: result.message || 'Invalid move' });
+      }
+    });
+
+    this.app.post('/games/:id/ai-move', (req: Request, res: Response) => {
+      const game = this.activeGames.get(req.params.id);
+      if (!game) {
+        return res.status(404).json({ error: 'Game not found' });
+      }
+      const result = this.gameEngine.makeAIMove(game);
+      if (result.success) {
+        this.activeGames.set(game.id, result.game);
+        res.json(result.game);
+      } else {
+        res.status(400).json({ error: result.message || 'AI move failed' });
+      }
+    });
+
+    this.app.get('/categories/:type/options', (req: Request, res: Response) => {
+      const type = req.params.type as any;
+      const options = this.gameEngine.getCategoryOptions(type);
+      res.json({ category: type, options });
     });
   }
 
@@ -194,6 +204,27 @@ export class OpenAIServer {
   }
 
   /**
+   * Get game engine
+   */
+  getGameEngine(): GameEngine {
+    return this.gameEngine;
+  }
+
+  /**
+   * Get active games map
+   */
+  getActiveGames(): Map<string, Game> {
+    return this.activeGames;
+  }
+
+  /**
+   * Get squad store
+   */
+  getSquadStore(): SquadStore {
+    return this.squadStore;
+  }
+
+  /**
    * Start the server
    */
   async start(): Promise<void> {
@@ -208,7 +239,13 @@ export class OpenAIServer {
         console.log(`   GET  /tools - List all tools (OpenAI Actions format)`);
         console.log(`   POST /tools/:id/execute - Execute a tool`);
         console.log(`   GET  /.well-known/openai-actions - OpenAI App manifest`);
-        console.log(`   POST /mcp - MCP Server endpoint\n`);
+        console.log(`   GET  /players - List players (filterable)`);
+        console.log(`   POST /players/reload - Reload player data from CSV`);
+        console.log(`   POST /games/new - Create a new 3x3 tic-tac-toe game`);
+        console.log(`   GET  /games/:id - Get game state`);
+        console.log(`   POST /games/:id/move - User makes a move (places O)`);
+        console.log(`   POST /games/:id/ai-move - AI makes a move (places X)`);
+        console.log(`   GET  /categories/:type/options - Get category options\n`);
         resolve();
       });
 

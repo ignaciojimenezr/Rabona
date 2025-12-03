@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Soccer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .game-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .game-info p {
+            margin: 5px 0;
+            color: #555;
+        }
+        
+        .game-board {
+            display: grid;
+            grid-template-columns: 150px 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .category-cell {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            text-align: center;
+            min-height: 80px;
+        }
+        
+        .player-cell {
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            padding: 15px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .player-cell:hover:not(.marked) {
+            border-color: #667eea;
+            background: #f0f0ff;
+            transform: translateY(-2px);
+        }
+        
+        .player-cell.marked-O {
+            background: #4ade80;
+            color: white;
+            border-color: #22c55e;
+        }
+        
+        .player-cell.marked-X {
+            background: #f87171;
+            color: white;
+            border-color: #ef4444;
+        }
+        
+        .player-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .player-details {
+            font-size: 11px;
+            color: #666;
+            opacity: 0.8;
+        }
+        
+        .player-cell.marked-O .player-details,
+        .player-cell.marked-X .player-details {
+            color: white;
+            opacity: 0.9;
+        }
+        
+        .mark {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        .status.waiting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status.winner {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status.draw {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚽ Tic Tac Soccer</h1>
+        <p class="subtitle">Play tic-tac-toe with soccer players!</p>
+        
+        <div id="gameInfo" class="game-info" style="display: none;">
+            <p><strong>Game ID:</strong> <span id="gameId"></span></p>
+            <p><strong>Turn:</strong> <span id="currentTurn"></span></p>
+            <p><strong>Status:</strong> <span id="gameStatus"></span></p>
+        </div>
+        
+        <div id="status" class="status waiting">Click "New Game" to start!</div>
+        
+        <div id="gameBoard" class="game-board"></div>
+        
+        <div class="controls">
+            <button class="btn-primary" onclick="createGame()">New Game</button>
+            <button class="btn-secondary" onclick="aiMove()" id="aiBtn" disabled>AI Move</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+        let currentGame = null;
+
+        async function createGame() {
+            try {
+                const response = await fetch(`${API_BASE}/games/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                currentGame = await response.json();
+                renderGame();
+                updateStatus('Your turn! Place O on a player that matches the row category.');
+            } catch (error) {
+                alert('Error creating game: ' + error.message);
+            }
+        }
+
+        async function makeMove(row, col) {
+            if (!currentGame || currentGame.isComplete) return;
+            if (currentGame.currentTurn !== 'user') {
+                alert('Not your turn!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/games/${currentGame.id}/move`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ row, col })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Invalid move');
+                    return;
+                }
+                
+                currentGame = await response.json();
+                renderGame();
+                
+                if (currentGame.isComplete) {
+                    if (currentGame.winner === 'user') {
+                        updateStatus('🎉 You win!', 'winner');
+                    } else if (currentGame.winner === 'ai') {
+                        updateStatus('😔 AI wins!', 'winner');
+                    } else {
+                        updateStatus('🤝 Draw!', 'draw');
+                    }
+                } else {
+                    updateStatus('AI is thinking...', 'waiting');
+                    document.getElementById('aiBtn').disabled = false;
+                }
+            } catch (error) {
+                alert('Error making move: ' + error.message);
+            }
+        }
+
+        async function aiMove() {
+            if (!currentGame || currentGame.isComplete) return;
+            
+            document.getElementById('aiBtn').disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE}/games/${currentGame.id}/ai-move`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                currentGame = await response.json();
+                renderGame();
+                
+                if (currentGame.isComplete) {
+                    if (currentGame.winner === 'user') {
+                        updateStatus('🎉 You win!', 'winner');
+                    } else if (currentGame.winner === 'ai') {
+                        updateStatus('😔 AI wins!', 'winner');
+                    } else {
+                        updateStatus('🤝 Draw!', 'draw');
+                    }
+                } else {
+                    updateStatus('Your turn! Place O on a player that matches the row category.', 'waiting');
+                }
+            } catch (error) {
+                alert('Error with AI move: ' + error.message);
+                document.getElementById('aiBtn').disabled = false;
+            }
+        }
+
+        function renderGame() {
+            if (!currentGame) return;
+
+            const board = document.getElementById('gameBoard');
+            board.innerHTML = '';
+
+            // Update game info
+            document.getElementById('gameId').textContent = currentGame.id;
+            document.getElementById('currentTurn').textContent = currentGame.currentTurn === 'user' ? 'You (O)' : 'AI (X)';
+            document.getElementById('gameStatus').textContent = currentGame.isComplete 
+                ? (currentGame.winner || 'Draw') 
+                : 'In Progress';
+            document.getElementById('gameInfo').style.display = 'block';
+
+            // Render grid
+            for (let row = 0; row < 3; row++) {
+                // Category cell
+                const categoryCell = document.createElement('div');
+                categoryCell.className = 'category-cell';
+                categoryCell.textContent = currentGame.grid[row][0].category || '';
+                board.appendChild(categoryCell);
+
+                // Player cells
+                for (let col = 1; col < 3; col++) {
+                    const cell = currentGame.grid[row][col];
+                    const playerCell = document.createElement('div');
+                    playerCell.className = 'player-cell';
+                    
+                    if (cell.player) {
+                        playerCell.innerHTML = `
+                            <div class="player-name">${cell.player.Name}</div>
+                            <div class="player-details">${cell.player.Team} • ${cell.player.Country}</div>
+                            ${cell.mark ? `<div class="mark">${cell.mark}</div>` : ''}
+                        `;
+                        
+                        if (cell.mark === 'O') {
+                            playerCell.classList.add('marked-O');
+                        } else if (cell.mark === 'X') {
+                            playerCell.classList.add('marked-X');
+                        } else if (!currentGame.isComplete && currentGame.currentTurn === 'user') {
+                            playerCell.classList.add('marked');
+                            playerCell.onclick = () => makeMove(row, col);
+                        }
+                    }
+                    
+                    board.appendChild(playerCell);
+                }
+            }
+        }
+
+        function updateStatus(message, type = 'waiting') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>
+

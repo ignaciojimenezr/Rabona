@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <title>Tic Tac Soccer</title>
+    <!-- OpenAI Apps SDK for transitions -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@openai/apps-sdk@latest/dist/index.js"></script>
+    <!-- Tailwind CSS for shadcn/ui typography -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            },
+          },
+        },
+      }
+      // Verify Tailwind is loaded
+      document.addEventListener('DOMContentLoaded', () => {
+        if (typeof tailwind !== 'undefined') {
+          console.log('✓ Tailwind CSS loaded successfully');
+        } else {
+          console.error('❌ Tailwind CSS failed to load!');
+        }
+      });
+    </script>
+    <style>
+      :root {
+        color: #0b0b0f;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        position: relative;
+      }
+
+      /* Background wrapper that covers the entire viewport */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        background-repeat: no-repeat;
+        /* Background image will be set via JavaScript using data URI */
+      }
+
+      /* Optimize background for mobile devices */
+      @media (max-width: 768px) {
+        body::before {
+          background-attachment: scroll; /* Better performance on mobile */
+          background-position: center top;
+        }
+      }
+
+      main {
+        width: 100%;
+        max-width: 600px;
+        min-height: 400px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Responsive design - Mobile first approach */
+      @media (max-width: 768px) {
+        main {
+          padding: 16px;
+          border-radius: 12px;
+          margin: 0;
+          max-width: 100%;
+        }
+
+        .game-board {
+          grid-template-columns: 80px 1fr 1fr 1fr;
+          gap: 6px;
+        }
+
+        .category-cell {
+          min-height: 80px;
+          border-radius: 8px;
+        }
+
+        .player-cell {
+          min-height: 60px;
+          padding: 8px;
+          border-radius: 8px;
+        }
+
+        .player-cell.revealed .circle-mark,
+        .player-cell.ai-marked .x-mark {
+          width: 60px;
+          height: 60px;
+        }
+
+        .player-cell.revealed .circle-mark::before,
+        .player-cell.revealed .circle-mark::after,
+        .player-cell.ai-marked .x-mark::before,
+        .player-cell.ai-marked .x-mark::after {
+          height: 45px;
+        }
+
+        .search-container {
+          padding: 20px;
+          width: 95%;
+          max-width: 100%;
+          border-radius: 12px;
+        }
+
+        .search-input {
+          padding: 14px 16px;
+          font-size: 16px; /* Prevents zoom on iOS */
+        }
+
+        .search-suggestions {
+          max-height: 250px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        main {
+          padding: 12px;
+          border-radius: 8px;
+        }
+
+        .game-board {
+          grid-template-columns: 70px 1fr 1fr 1fr;
+          gap: 4px;
+        }
+
+        .category-cell {
+          min-height: 70px;
+          border-radius: 6px;
+        }
+
+        .player-cell {
+          min-height: 50px;
+          padding: 6px;
+          border-radius: 6px;
+        }
+
+        .player-cell.revealed .circle-mark,
+        .player-cell.ai-marked .x-mark {
+          width: 50px;
+          height: 50px;
+        }
+
+        .player-cell.revealed .circle-mark::before,
+        .player-cell.revealed .circle-mark::after,
+        .player-cell.ai-marked .x-mark::before,
+        .player-cell.ai-marked .x-mark::after {
+          height: 38px;
+        }
+
+        .player-name-in-mark {
+          font-size: 10px !important;
+        }
+
+        .search-container {
+          padding: 16px;
+          width: 100%;
+          border-radius: 8px;
+          margin: 16px;
+        }
+
+        .search-input {
+          padding: 12px 14px;
+          font-size: 16px; /* Prevents zoom on iOS */
+        }
+
+        .search-suggestions {
+          max-height: 200px;
+        }
+
+        .suggestion-item {
+          padding: 10px 12px;
+        }
+      }
+
+      /* Ensure touch targets meet minimum size (44x44px) */
+      @media (pointer: coarse) {
+        .player-cell {
+          min-height: 44px;
+          min-width: 44px;
+        }
+
+        .category-cell {
+          min-height: 44px;
+          min-width: 44px;
+        }
+      }
+
+      /* Landscape orientation adjustments */
+      @media (orientation: landscape) and (max-height: 500px) {
+        main {
+          padding: 12px;
+        }
+
+        .game-board {
+          gap: 4px;
+        }
+
+        .category-cell {
+          min-height: 60px;
+        }
+
+        .player-cell {
+          min-height: 50px;
+        }
+
+        .search-container {
+          max-height: 90vh;
+          overflow-y: auto;
+        }
+
+        .search-suggestions {
+          max-height: 150px;
+        }
+      }
+
+      /* High DPI displays */
+      @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        .category-cell img,
+        .player-cell img {
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: crisp-edges;
+        }
+      }
+
+      /* Dark mode support (respects system preference) */
+      @media (prefers-color-scheme: dark) {
+        /* Note: Following Apps SDK guidelines, we maintain light mode
+           but can add subtle adjustments if needed */
+        main {
+          background: rgba(255, 255, 255, 0.98);
+        }
+      }
+
+      /* Typography now handled by Tailwind classes */
+      /* Removed h2 styles - using Tailwind classes instead */
+
+      .game-board {
+        display: grid;
+        grid-template-columns: 120px 1fr 1fr 1fr;
+        grid-template-rows: auto 1fr 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .category-cell {
+        background-color: #111bf5; /* Fallback color */
+        color: white;
+        min-height: 100px;
+        width: 100%;
+        aspect-ratio: 1; /* Make cells square for better image display */
+        display: block; /* Changed from flex to block for better image display */
+        padding: 0; /* Remove padding so image fills entire cell */
+        border-radius: 10px;
+        text-align: center;
+        overflow: hidden; /* Ensure image doesn't overflow rounded corners */
+        box-sizing: border-box;
+        position: relative;
+        border: 0 !important; /* Remove any borders - use 0 instead of none */
+        border-width: 0 !important;
+        border-style: none !important;
+        border-color: transparent !important;
+        outline: 0 !important; /* Remove any outlines */
+        outline-width: 0 !important;
+        outline-style: none !important;
+        outline-color: transparent !important;
+        box-shadow: none !important; /* Remove any box shadows */
+        /* Force white background to show through transparent image areas */
+        background-color: white !important;
+      }
+      
+      .category-cell img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        object-position: center !important;
+        display: block !important;
+        border: none !important; /* Explicitly remove any borders */
+        outline: none !important; /* Remove any outlines */
+        box-shadow: none !important; /* Remove any box shadows */
+      }
+      
+      /* Fallback for category cells without images */
+      .category-cell:not(:has(img)) {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+      }
+
+      .player-cell {
+        background: #fff;
+        border: 2px solid #cad3e0;
+        padding: 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        min-height: 70px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        position: relative;
+      }
+
+      .player-cell:hover:not(.revealed):not(.ai-marked) {
+        border-color: #111bf5;
+        background: #f8f9fa;
+      }
+
+      .player-cell.revealed {
+        background: #fff;
+        color: #0b0b0f;
+        border-color: #cad3e0;
+        cursor: default;
+        position: relative;
+      }
+
+      .player-cell.revealed .circle-mark {
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        border: 3px solid #22c55e;
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: circleAppear 0.2s ease-out;
+      }
+
+      .player-cell.revealed .circle-mark.exiting {
+        animation: none !important;
+        transition: opacity 0.3s ease-out, transform 0.3s ease-out !important;
+        opacity: 0 !important;
+        transform: translate(-50%, -50%) scale(0.5) !important;
+      }
+
+      @keyframes circleAppear {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.5);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+
+      .player-cell.revealed .circle-mark .player-name-in-mark {
+        color: #0b0b0f;
+        text-align: center;
+        padding: 4px;
+        line-height: 1.1;
+        z-index: 1;
+      }
+
+      .player-cell.revealed .player-name,
+      .player-cell.revealed .player-details {
+        display: none; /* Hide name below, show inside circle */
+      }
+
+      .player-cell.ai-marked {
+        background: #fff;
+        color: #0b0b0f;
+        border-color: #cad3e0;
+        cursor: default;
+        position: relative;
+      }
+
+      .player-cell.ai-marked .x-mark {
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: xMarkAppear 0.3s ease-out;
+      }
+
+      .player-cell.ai-marked .x-mark[style*="animation: none"] {
+        animation: none !important;
+      }
+
+      @keyframes xMarkAppear {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0.5);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
+        }
+      }
+
+      .player-cell.ai-marked .x-mark::before,
+      .player-cell.ai-marked .x-mark::after {
+        content: '';
+        position: absolute;
+        width: 3px;
+        height: 60px;
+        background: #ef4444;
+        top: 50%;
+        left: 50%;
+      }
+
+      .player-cell.ai-marked .x-mark::before {
+        transform: translate(-50%, -50%) rotate(45deg);
+      }
+
+      .player-cell.ai-marked .x-mark::after {
+        transform: translate(-50%, -50%) rotate(-45deg);
+      }
+
+      .player-cell.ai-marked .x-mark .player-name-in-mark {
+        color: #0b0b0f;
+        text-align: center;
+        padding: 4px;
+        line-height: 1.1;
+        z-index: 1;
+        position: relative;
+      }
+
+      .player-cell.ai-marked .player-name,
+      .player-cell.ai-marked .player-details {
+        display: none; /* Hide name below, show inside X */
+      }
+
+      /* Typography now handled by Tailwind classes */
+      .player-name {
+        margin-bottom: 4px;
+      }
+
+      .player-details {
+        opacity: 0.8;
+      }
+
+      .player-cell.revealed .player-details {
+        color: #6c768a;
+        opacity: 0.8;
+      }
+
+      .status {
+        text-align: center;
+        padding: 12px;
+        border-radius: 10px;
+        margin-bottom: 16px;
+      }
+
+      .status.waiting {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .status.winner {
+        background: #d1fae5;
+        color: #065f46;
+      }
+
+      .status.draw {
+        background: #e0e7ff;
+        color: #3730a3;
+      }
+
+      .skip-button {
+        padding: 10px 20px;
+        background: #111bf5;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-top: 12px;
+      }
+
+      .skip-button:hover {
+        background: #0f15d4;
+      }
+
+      .skip-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      /* Search Modal */
+      .search-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .search-modal.active {
+        display: flex;
+      }
+
+      .search-container {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .search-input-wrapper {
+        position: relative;
+        margin-bottom: 12px;
+      }
+
+      .search-input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #cad3e0;
+        border-radius: 10px;
+        box-sizing: border-box;
+      }
+
+      .search-input:focus {
+        outline: none;
+        border-color: #111bf5;
+      }
+
+      .search-suggestions {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        margin-top: 8px;
+      }
+
+      .suggestion-item {
+        padding: 12px 16px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        user-select: none;
+        -webkit-user-select: none;
+        pointer-events: auto;
+      }
+
+      .suggestion-item * {
+        pointer-events: none;
+      }
+
+      .suggestion-item:hover {
+        background: #f5f5f5;
+      }
+
+      .suggestion-item:last-child {
+        border-bottom: none;
+      }
+
+      /* Typography now handled by Tailwind classes */
+      .suggestion-details {
+        color: #666;
+      }
+
+      .search-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h2 class="scroll-m-20 text-4xl font-extrabold tracking-tight mb-4 text-slate-900 leading-tight">⚽ Tic Tac Soccer</h2>
+      <div id="status" class="status waiting text-base font-semibold">Loading game...</div>
+      <div id="gameBoard" class="game-board"></div>
+      <div style="text-align: center;">
+        <button id="skipButton" class="skip-button text-base font-semibold" onclick="skipTurn()" style="display: none;">Skip Turn</button>
+      </div>
+    </main>
+
+    <!-- Search Modal -->
+    <div id="searchModal" class="search-modal">
+      <div class="search-container">
+        <button class="search-close text-2xl" onclick="closeSearch()">×</button>
+        <h3 class="scroll-m-20 text-xl font-semibold tracking-tight mt-0">Guess the player</h3>
+        <div class="search-input-wrapper">
+          <input
+            type="text"
+            id="playerSearch"
+            class="search-input text-base"
+            placeholder="Search Player"
+            autocomplete="off"
+          />
+          <div id="searchSuggestions" class="search-suggestions"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      /**
+       * OpenAI Apps SDK Widget - Tic Tac Soccer Game
+       * 
+       * This widget follows OpenAI Apps SDK best practices:
+       * 1. Widget state is the source of truth (window.openai.widgetState)
+       * 2. Tools update widget state through structured content responses
+       * 3. Widget listens for state updates via events
+       * 4. State persists across tool invocations
+       * 
+       * Pattern:
+       * - Tools return structured content → automatically updates widget state
+       * - Widget reads from widget state → renders UI
+       * - User interactions → direct tool calls for immediate feedback → update widget state → re-render
+       * - Widget state persists across assistant tool invocations (from structured content)
+       * 
+       * Note: For immediate user interactions (clicking cells), we make direct HTTP calls
+       * to provide instant feedback, then update widget state. For assistant-triggered
+       * tool invocations, the structured content automatically updates widget state.
+       */
+
+      const boardEl = document.querySelector("#gameBoard");
+      const statusEl = document.querySelector("#status");
+      const searchModal = document.querySelector("#searchModal");
+      const playerSearch = document.querySelector("#playerSearch");
+      const searchSuggestions = document.querySelector("#searchSuggestions");
+
+      // Game state - initialized from widget state (OpenAI Apps SDK pattern)
+      let game = null;
+      let selectedCell = null;
+      let allPlayers = [];
+      let searchTimeout = null;
+      // Track which cells have marks to prevent re-animating existing marks
+      let previousMarks = new Map(); // key: "row-col", value: mark ('O' or 'X')
+
+      // Initialize widget state - read from OpenAI widget state API
+      // This is called on widget load to restore state from previous tool invocations
+      function initializeWidgetState() {
+        // First, check widget state (persists across tool invocations)
+        // Widget state is the source of truth for persisted data
+        const widgetState = window.openai?.widgetState;
+        if (widgetState) {
+          try {
+            const state = typeof widgetState === 'string' ? JSON.parse(widgetState) : widgetState;
+            if (state && typeof state === 'object' && state.game) {
+              game = state.game;
+              return; // Widget state takes priority
+            }
+          } catch (e) {
+            console.error('Error parsing widget state:', e);
+          }
+        }
+        
+        // Second, check tool output for structured content (when tools are first called)
+        // This happens when a tool returns structured content with game data
+        if (!game && window.openai?.toolOutput) {
+          // Check structured content from tool output
+          const structuredContent = window.openai.toolOutput.structuredContent || 
+                                   window.openai.toolOutput?.structuredContent;
+          if (structuredContent?.game) {
+            game = structuredContent.game;
+            // IMPORTANT: Save to widget state for persistence across future tool invocations
+            updateWidgetState({ game });
+            return;
+          }
+          
+          // Also check direct toolOutput.game (legacy format)
+          if (window.openai.toolOutput.game) {
+            game = window.openai.toolOutput.game;
+            // Save to widget state for persistence
+            updateWidgetState({ game });
+            return;
+          }
+        }
+        
+        // Third, check for structuredContent at root level
+        if (!game && window.openai?.structuredContent?.game) {
+          game = window.openai.structuredContent.game;
+          updateWidgetState({ game });
+          return;
+        }
+      }
+
+      // Update widget state (OpenAI Apps SDK pattern)
+      // Widget state persists across tool invocations and should always be set
+      function updateWidgetState(updates) {
+        try {
+          // Initialize widget state object if it doesn't exist
+          if (!window.openai) {
+            window.openai = {};
+          }
+          
+          // Get current state (may be null, undefined, string, or object)
+          let currentState = {};
+          if (window.openai.widgetState) {
+            if (typeof window.openai.widgetState === 'string') {
+              try {
+                currentState = JSON.parse(window.openai.widgetState);
+              } catch (e) {
+                console.warn('Failed to parse widget state as JSON:', e);
+                currentState = {};
+              }
+            } else if (typeof window.openai.widgetState === 'object') {
+              currentState = window.openai.widgetState;
+            }
+          }
+          
+          // Merge updates into current state
+          const newState = { ...currentState, ...updates };
+          
+          // Update widget state using OpenAI Apps SDK API
+          // Use setWidgetState (correct API) not setState
+          if (window.openai.setWidgetState && typeof window.openai.setWidgetState === 'function') {
+            window.openai.setWidgetState(newState);
+          } else {
+            // Fallback: set widget state directly
+            window.openai.widgetState = newState;
+          }
+        } catch (e) {
+          console.error('❌ Error updating widget state:', e);
+        }
+      }
+
+      // Listen for widget state changes and tool output updates
+      function setupWidgetStateListener() {
+        // Listen for widget state update events (OpenAI Apps SDK pattern)
+        window.addEventListener('openai:widget_state_update', (event) => {
+          const newState = event.detail?.state;
+          if (newState) {
+            try {
+              const state = typeof newState === 'string' ? JSON.parse(newState) : newState;
+              if (state.game) {
+                game = state.game;
+                render();
+              }
+            } catch (e) {
+              console.error('Error parsing widget state update:', e);
+            }
+          }
+        });
+        
+        // Listen for structured content updates from tool responses
+        window.addEventListener('openai:structured_content_update', (event) => {
+          const structuredContent = event.detail?.structuredContent;
+          if (structuredContent?.game) {
+            game = structuredContent.game;
+            // Persist to widget state
+            updateWidgetState({ game });
+            render();
+          }
+        });
+        
+        // Listen for tool output updates (when tools return structured content)
+        // This is the primary way tools update widget state
+        const checkToolOutput = () => {
+          const structuredContent = window.openai?.toolOutput?.structuredContent;
+          if (structuredContent?.game) {
+            const newGame = structuredContent.game;
+            // Only update if it's actually different (avoid unnecessary renders)
+            if (!game || newGame.id !== game.id || JSON.stringify(newGame) !== JSON.stringify(game)) {
+              game = newGame;
+              // Persist to widget state for future tool invocations
+              updateWidgetState({ game });
+              render();
+            }
+          }
+        };
+        
+        // Check immediately and then periodically (but less frequently than before)
+        checkToolOutput();
+        // Check every 500ms for tool output updates (tools update this when they complete)
+        const toolOutputInterval = setInterval(checkToolOutput, 500);
+        
+        // Clean up interval when page unloads
+        window.addEventListener('beforeunload', () => {
+          clearInterval(toolOutputInterval);
+        });
+      }
+
+      // Load all players for autocomplete
+      async function loadAllPlayers() {
+        try {
+          // Use injected server URL or fallback to window.location.origin
+          const baseUrl = window.MCP_SERVER_URL || window.location.origin;
+          const playersUrl = `${baseUrl}/players`;
+          
+          const response = await fetch(playersUrl);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          allPlayers = data.players || [];
+          
+          if (allPlayers.length === 0) {
+            console.warn('⚠ No players loaded!');
+          }
+        } catch (error) {
+          console.error('Error loading players:', error);
+          // Fallback: try to get players from game if available
+          if (game && game.grid) {
+            const playersFromGame = [];
+            for (let row = 1; row < 4; row++) {
+              for (let col = 1; col < 4; col++) {
+                if (game.grid[row] && game.grid[row][col] && game.grid[row][col].player) {
+                  playersFromGame.push(game.grid[row][col].player);
+                }
+              }
+            }
+            allPlayers = playersFromGame;
+          }
+        }
+      }
+
+      // Normalize string for fuzzy matching (remove accents, lowercase, handle special chars)
+      function normalizeString(str) {
+        if (!str) return '';
+        return str
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // Remove accents (é -> e, ê -> e, etc.)
+          .replace(/[^a-z0-9\s]/g, '') // Remove special chars except spaces
+          .trim();
+      }
+
+      // Improved fuzzy search players - handles accents, partial matches, and typos
+      function searchPlayers(query) {
+        if (!query || query.trim().length < 1) return [];
+        
+        const normalizedQuery = normalizeString(query);
+        if (normalizedQuery.length === 0) return [];
+        
+        const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
+        const matches = [];
+        
+        for (const player of allPlayers) {
+          if (!player || !player.Name) continue;
+          
+          const normalizedName = normalizeString(player.Name);
+          
+          // Skip if name is empty after normalization
+          if (!normalizedName) continue;
+          
+          const nameWords = normalizedName.split(/\s+/).filter(w => w.length > 0);
+          
+          // Method 1: Name starts with query (highest priority)
+          if (normalizedName.startsWith(normalizedQuery)) {
+            matches.push({ player, score: 100 });
+            continue;
+          }
+          
+          // Method 2: First word of name starts with query (high priority for single-word queries)
+          // This handles "virgil" matching "Virgil van Dijk" or "tah" matching "Jonathan Tah"
+          if (queryWords.length === 1 && nameWords.length > 0) {
+            // Check if any word in the name starts with the query (handles last names too)
+            if (nameWords.some(word => word.startsWith(queryWords[0]))) {
+              matches.push({ player, score: 95 });
+              continue;
+            }
+          }
+          
+          // Method 3: Exact substring match anywhere in name
+          // This handles "virgil" matching "Virgil van Dijk" or "tah" matching "Jonathan Tah"
+          if (normalizedName.includes(normalizedQuery)) {
+            matches.push({ player, score: 90 });
+            continue;
+          }
+          
+          // Method 4: All query words appear in name (for multi-word queries)
+          if (queryWords.length > 1) {
+            const allWordsMatch = queryWords.every(word => 
+              normalizedName.includes(word)
+            );
+            if (allWordsMatch) {
+              matches.push({ player, score: 85 });
+              continue;
+            }
+          }
+          
+          // Method 5: Any word in name starts with query word (even for single character queries)
+          const wordStartMatch = queryWords.some(queryWord => 
+            nameWords.some(nameWord => nameWord.startsWith(queryWord))
+          );
+          if (wordStartMatch) {
+            matches.push({ player, score: 70 });
+            continue;
+          }
+          
+          // Method 6: Any word in name contains query word (even for short queries)
+          const wordContainsMatch = queryWords.some(queryWord => 
+            nameWords.some(nameWord => nameWord.includes(queryWord))
+          );
+          if (wordContainsMatch) {
+            matches.push({ player, score: 60 });
+            continue;
+          }
+          
+          // Method 7: Fuzzy match - check if query characters appear in order in the name
+          // Lower threshold for short queries
+          const minLength = normalizedQuery.length >= 3 ? 3 : normalizedQuery.length;
+          let queryIndex = 0;
+          for (let i = 0; i < normalizedName.length && queryIndex < normalizedQuery.length; i++) {
+            if (normalizedName[i] === normalizedQuery[queryIndex]) {
+              queryIndex++;
+            }
+          }
+          if (queryIndex === normalizedQuery.length && queryIndex >= minLength) {
+            matches.push({ player, score: 40 });
+          }
+        }
+        
+        // Sort by score (higher first), then by name
+        matches.sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          const aNorm = normalizeString(a.player.Name);
+          const bNorm = normalizeString(b.player.Name);
+          const aStarts = aNorm.startsWith(normalizedQuery);
+          const bStarts = bNorm.startsWith(normalizedQuery);
+          
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          
+          return a.player.Name.localeCompare(b.player.Name);
+        });
+        
+        const results = matches.map(m => m.player);
+        return results.slice(0, 10); // Limit to 10 suggestions
+      }
+
+      // Render search suggestions
+      // Store current suggestions for event delegation
+      let currentSuggestions = [];
+
+      // Use event delegation on the suggestions container - set up once
+      searchSuggestions.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.suggestion-item');
+        if (!item) return;
+        
+        const index = parseInt(item.getAttribute('data-player-index'));
+        if (isNaN(index) || !currentSuggestions[index]) return;
+        
+        const player = currentSuggestions[index];
+        selectPlayer(player);
+      });
+
+      function renderSuggestions(query) {
+        const suggestions = searchPlayers(query);
+        searchSuggestions.innerHTML = '';
+        
+        if (suggestions.length === 0 && query.length > 0) {
+          searchSuggestions.innerHTML = '<div class="suggestion-item text-sm text-muted-foreground" style="padding: 12px; color: #666;">No players found</div>';
+          currentSuggestions = [];
+          return;
+        }
+        
+        if (query.length === 0) {
+          // Show some popular players when search is empty
+          const popular = allPlayers.slice(0, 5);
+          currentSuggestions = popular;
+          popular.forEach((player, index) => {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item';
+            item.setAttribute('data-player-index', index.toString());
+            item.innerHTML = `
+              <div>
+                <div class="suggestion-name text-sm font-semibold">${player.Name}</div>
+                <div class="suggestion-details text-xs">${player.Team} • ${player.Country}</div>
+              </div>
+            `;
+            searchSuggestions.appendChild(item);
+          });
+          return;
+        }
+        
+        currentSuggestions = suggestions;
+        suggestions.forEach((player, index) => {
+          const item = document.createElement('div');
+          item.className = 'suggestion-item';
+          item.setAttribute('data-player-index', index.toString());
+          item.innerHTML = `
+            <div>
+              <div class="suggestion-name text-sm font-semibold">${player.Name}</div>
+              <div class="suggestion-details text-xs">${player.Team} • ${player.Country}</div>
+            </div>
+          `;
+          searchSuggestions.appendChild(item);
+        });
+      }
+
+      // Open search modal for a cell
+      function openSearch(row, col) {
+        selectedCell = { row, col };
+        searchModal.classList.add('active');
+        playerSearch.value = '';
+        playerSearch.focus();
+        renderSuggestions('');
+      }
+
+      // Close search modal
+      function closeSearch() {
+        searchModal.classList.remove('active');
+        selectedCell = null;
+        playerSearch.value = '';
+        searchSuggestions.innerHTML = '';
+      }
+
+      // Call MCP tool directly for immediate user interactions
+      // For user-initiated actions, we make direct calls and update widget state
+      // This provides immediate feedback while maintaining widget state as source of truth
+      async function callMcpTool(toolName, args) {
+        try {
+          // Use injected server URL or fallback to window.location.origin
+          const baseUrl = window.MCP_SERVER_URL || window.location.origin;
+          const mcpUrl = `${baseUrl}/mcp`;
+          
+          const response = await fetch(mcpUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'tools/call',
+              params: {
+                name: toolName,
+                arguments: args
+              },
+              id: Date.now()
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          
+          if (data.error) {
+            console.error('❌ MCP error:', data.error);
+            throw new Error(data.error.message || 'Tool call failed');
+          }
+          
+          // Extract game from structured content response
+          // Check multiple possible response structures
+          let gameData = null;
+          
+          // Structure 1: result.structuredContent.game (direct)
+          if (data.result?.structuredContent?.game) {
+            gameData = data.result.structuredContent.game;
+          }
+          // Structure 2: result.content[].structuredContent.game
+          else if (data.result?.content && Array.isArray(data.result.content)) {
+            for (const item of data.result.content) {
+              if (item.structuredContent?.game) {
+                gameData = item.structuredContent.game;
+                break;
+              }
+            }
+          }
+          // Structure 3: Check if result itself is the structured content
+          else if (data.result?.game) {
+            gameData = data.result.game;
+          }
+          
+          if (gameData) {
+            // Update widget state immediately (source of truth)
+            // Don't render here - let the caller handle rendering
+            // This prevents double-rendering which breaks animation detection
+            game = gameData;
+            updateWidgetState({ game });
+            return gameData;
+          }
+          
+          return null;
+        } catch (error) {
+          console.error('MCP tool call error:', error);
+          throw error;
+        }
+      }
+
+      // Helper function to check if a player matches categories (client-side validation)
+      function playerMatchesCategories(player, rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue) {
+        if (!player) return false;
+        
+        // Get player value for row category
+        let playerRowValue = '';
+        if (rowCategoryType === 'Country') {
+          playerRowValue = player.Country || '';
+        } else if (rowCategoryType === 'Position') {
+          // Check if player's position matches (handle multiple positions)
+          const pos = (player.Position || '').toUpperCase();
+          const normalizedCategory = rowCategoryValue.toUpperCase();
+          if (normalizedCategory === 'KEEPER' || normalizedCategory === 'GOALKEEPER') {
+            playerRowValue = pos.includes('GK') || pos.includes('KEEPER') ? 'Keeper' : '';
+          } else if (normalizedCategory === 'DEFENDER') {
+            playerRowValue = (pos.includes('DF') || pos.includes('CB') || pos.includes('RB') || 
+                             pos.includes('LB') || pos.includes('DEFENDER')) ? 'Defender' : '';
+          } else if (normalizedCategory === 'MIDFIELDER') {
+            playerRowValue = (pos.includes('MF') || pos.includes('CM') || pos.includes('DM') || 
+                             pos.includes('AM') || pos.includes('LM') || pos.includes('RM') || 
+                             pos.includes('MIDFIELDER')) ? 'Midfielder' : '';
+          } else if (normalizedCategory === 'FORWARD') {
+            playerRowValue = (pos.includes('FW') || pos.includes('FORWARD') || pos.includes('ST') || 
+                             pos.includes('SS') || pos.includes('LW') || pos.includes('RW') || 
+                             pos.includes('CF') || pos.includes('WING') || pos.includes('ATTACK')) ? 'Forward' : '';
+          }
+        } else if (rowCategoryType === 'League') {
+          playerRowValue = player.League || '';
+        } else if (rowCategoryType === 'Team') {
+          playerRowValue = player.Team || '';
+        } else if (rowCategoryType === 'Shirt Number') {
+          playerRowValue = player['Shirt Number'] || '';
+        }
+        
+        // Get player value for column category
+        let playerColValue = '';
+        if (columnCategoryType === 'Country') {
+          playerColValue = player.Country || '';
+        } else if (columnCategoryType === 'Position') {
+          // Check if player's position matches (handle multiple positions)
+          const pos = (player.Position || '').toUpperCase();
+          const normalizedCategory = columnCategoryValue.toUpperCase();
+          if (normalizedCategory === 'KEEPER' || normalizedCategory === 'GOALKEEPER') {
+            playerColValue = pos.includes('GK') || pos.includes('KEEPER') ? 'Keeper' : '';
+          } else if (normalizedCategory === 'DEFENDER') {
+            playerColValue = (pos.includes('DF') || pos.includes('CB') || pos.includes('RB') || 
+                             pos.includes('LB') || pos.includes('DEFENDER')) ? 'Defender' : '';
+          } else if (normalizedCategory === 'MIDFIELDER') {
+            playerColValue = (pos.includes('MF') || pos.includes('CM') || pos.includes('DM') || 
+                             pos.includes('AM') || pos.includes('LM') || pos.includes('RM') || 
+                             pos.includes('MIDFIELDER')) ? 'Midfielder' : '';
+          } else if (normalizedCategory === 'FORWARD') {
+            playerColValue = (pos.includes('FW') || pos.includes('FORWARD') || pos.includes('ST') || 
+                             pos.includes('SS') || pos.includes('LW') || pos.includes('RW') || 
+                             pos.includes('CF') || pos.includes('WING') || pos.includes('ATTACK')) ? 'Forward' : '';
+          }
+        } else if (columnCategoryType === 'League') {
+          playerColValue = player.League || '';
+        } else if (columnCategoryType === 'Team') {
+          playerColValue = player.Team || '';
+        } else if (columnCategoryType === 'Shirt Number') {
+          playerColValue = player['Shirt Number'] || '';
+        }
+        
+        return playerRowValue === rowCategoryValue && playerColValue === columnCategoryValue;
+      }
+
+      // Select a player from suggestions
+      async function selectPlayer(player) {
+        if (!selectedCell || !game) {
+          console.error('No cell selected or no game!');
+          return;
+        }
+        
+        // Save cell coordinates before closing search (which clears selectedCell)
+        const cellRow = selectedCell.row;
+        const cellCol = selectedCell.col;
+        
+        // Store original game state for potential rollback
+        const originalGame = JSON.parse(JSON.stringify(game));
+        
+        // Validate client-side first to determine if we should show optimistic update
+        const rowCategoryCell = game.grid[cellRow][0];
+        const columnCategoryCell = game.grid[0][cellCol];
+        const rowCategoryType = rowCategoryCell.category;
+        const columnCategoryType = columnCategoryCell.category;
+        const rowCategoryValue = game.rowCategories[cellRow - 1];
+        const columnCategoryValue = game.columnCategories[cellCol - 1];
+        
+        const isValidGuess = playerMatchesCategories(
+          player,
+          rowCategoryType,
+          rowCategoryValue,
+          columnCategoryType,
+          columnCategoryValue
+        );
+        
+        // If guess is valid, show optimistic update IMMEDIATELY (synchronously) before anything else
+        if (isValidGuess) {
+          const optimisticGrid = game.grid.map((r, rIdx) => 
+            r.map((c, cIdx) => 
+              (rIdx === cellRow && cIdx === cellCol) 
+                ? { ...c, player: player, mark: 'O' }
+                : c
+            )
+          );
+          
+          const optimisticGame = {
+            ...game,
+            grid: optimisticGrid,
+            currentTurn: 'ai'
+          };
+          
+          // Update immediately for instant feedback (synchronous)
+          game = optimisticGame;
+          updateWidgetState({ game });
+          render();
+        }
+        
+        try {
+          closeSearch();
+          
+          // Call the server to validate the guess
+          const updatedGame = await callMcpTool("guess_player", {
+            gameId: game.id,
+            row: cellRow,
+            col: cellCol,
+            playerName: player.Name
+          });
+          
+          if (!updatedGame) {
+            console.error('❌ No game returned from tool call!');
+            // Rollback optimistic update if we showed one
+            if (isValidGuess) {
+              game = originalGame;
+              updateWidgetState({ game });
+              render();
+            }
+            alert('Failed to update game. Please check console for details.');
+          } else {
+            // Check if the guess was correct by comparing the returned game
+            const returnedCell = updatedGame.grid[cellRow][cellCol];
+            if (returnedCell && returnedCell.mark === 'O') {
+              // Guess was correct - update with AI move (which includes delay from server)
+              // The updatedGame includes the AI's X mark, which should animate
+              // updatedGame already has the game state from callMcpTool
+              // We need to render to show the X mark with animation
+              game = updatedGame;
+              updateWidgetState({ game });
+              // Render after a small delay to ensure browser applies animation correctly
+              // The X mark should be detected as new since previousMarks only has the O
+              requestAnimationFrame(() => {
+                render();
+              });
+            } else {
+              // Guess was incorrect - rollback optimistic update if we showed one
+              if (isValidGuess) {
+                game = originalGame;
+                updateWidgetState({ game });
+                render();
+              }
+              // If guess was invalid from the start, don't re-render (nothing changed)
+              // Just show alert
+              alert('Incorrect guess. ' + (updatedGame.message || 'Try again!'));
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error guessing player:', error);
+          // Rollback optimistic update if we showed one
+          if (isValidGuess) {
+            game = originalGame;
+            updateWidgetState({ game });
+            render();
+          }
+          alert('Error: ' + (error.message || 'Failed to guess player'));
+        }
+      }
+
+      // Handle search input - immediate feedback
+      playerSearch.addEventListener('input', (e) => {
+        const query = e.target.value;
+        
+        // Check if players are loaded
+        if (allPlayers.length === 0) {
+          loadAllPlayers().then(() => {
+            renderSuggestions(query);
+          });
+          return;
+        }
+        
+        clearTimeout(searchTimeout);
+        // Render immediately for better UX
+        renderSuggestions(query);
+        // Also set timeout for debouncing if needed
+        searchTimeout = setTimeout(() => {
+          renderSuggestions(query);
+        }, 100);
+      });
+
+      // Handle Enter key
+      playerSearch.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const query = e.target.value.trim();
+          if (query) {
+            const suggestions = searchPlayers(query);
+            if (suggestions.length > 0) {
+              selectPlayer(suggestions[0]);
+            }
+          }
+        } else if (e.key === 'Escape') {
+          closeSearch();
+        }
+      });
+
+      // Close modal on background click
+      searchModal.addEventListener('click', (e) => {
+        // Don't close if clicking inside the search container
+        if (e.target === searchModal || e.target.closest('.search-container') === null) {
+          closeSearch();
+        }
+      });
+
+      // Helper function to infer category type from value if type is missing
+      const inferCategoryType = (categoryValue) => {
+        if (!categoryValue) return 'Unknown';
+        
+        // Check if it's a position
+        if (['Keeper', 'Defender', 'Midfielder', 'Forward'].includes(categoryValue)) {
+          return 'Position';
+        }
+        
+        // Check if it's a country code (3 letters, uppercase)
+        if (/^[A-Z]{3}$/.test(categoryValue)) {
+          return 'Country';
+        }
+        
+        // Check if it's a league
+        if (['LaLiga', 'Premier League', 'Bundesliga'].includes(categoryValue)) {
+          return 'League';
+        }
+        
+        // Check if it's a team (common team names)
+        const teamNames = ['FC Barcelona', 'Real Madrid', 'Atletico Madrid', 'Manchester City', 
+                          'Chelsea', 'Liverpool', 'Arsenal', 'Tottenham Hotspur', 'Bayern Munich'];
+        if (teamNames.some(team => categoryValue.includes(team) || team.includes(categoryValue))) {
+          return 'Team';
+        }
+        
+        // Check if it's a number (shirt number)
+        if (/^\d+$/.test(categoryValue.trim())) {
+          return 'Shirt Number';
+        }
+        
+        return 'Unknown';
+      };
+
+      // Helper function to get category image and text
+      const getCategoryDisplay = (categoryType, categoryValue) => {
+        // If categoryType is missing or 'Unknown', try to infer it
+        if (!categoryType || categoryType === 'Unknown') {
+          categoryType = inferCategoryType(categoryValue);
+        }
+        
+        // Use embedded data URIs from window.IMAGE_DATA_URIS
+        const imageDataUris = window.IMAGE_DATA_URIS || {};
+        let imagePath = '';
+        let text = '';
+        
+        if (categoryType === 'Position') {
+          if (categoryValue === 'Keeper' || categoryValue === 'GK' || categoryValue === 'Goalkeeper') {
+            imagePath = imageDataUris['Goalkeeper.webp'] || '';
+            text = 'Goalkeeper'; // Add goalkeeper text
+          } else if (categoryValue === 'Midfielder' || categoryValue === 'MF') {
+            imagePath = imageDataUris['Soccer_Player.png'] || '';
+            text = 'Midfielder'; // Show position text
+          } else if (categoryValue === 'Forward' || categoryValue === 'FW') {
+            imagePath = imageDataUris['Soccer_Player.png'] || '';
+            text = 'Forward'; // Show position text
+          } else if (categoryValue === 'Defender' || categoryValue === 'DF') {
+            imagePath = imageDataUris['Soccer_Player.png'] || '';
+            text = 'Defender'; // Show Defender text
+          } else {
+            imagePath = imageDataUris['Soccer_Player.png'] || '';
+            text = categoryValue;
+          }
+        } else if (categoryType === 'Shirt Number') {
+          imagePath = imageDataUris['Shirt_Number.png'] || '';
+          text = categoryValue; // Show the number
+        } else if (categoryType === 'Team') {
+          // Map team names to images - NEVER use player silhouettes for teams
+          const teamMap = {
+            'FC Barcelona': 'barca.png',
+            'Real Madrid': 'madrid.png',
+            'Atletico Madrid': 'atletico.svg',
+            'Manchester City': 'mancity.png',
+            'Chelsea': 'Chelsea.png',
+            'Liverpool': 'Liverpool_FC.png',
+            'Arsenal': 'arsenal.png',
+            'Tottenham Hotspur': 'tottenham.png',
+            'Bayern Munich': 'germany.webp' // Using Germany flag as placeholder
+          };
+          const imageName = teamMap[categoryValue];
+          if (imageName) {
+            imagePath = imageDataUris[imageName] || '';
+          }
+          // If no team logo found, show text only (never use player silhouette)
+          if (!imagePath) {
+            text = categoryValue; // Show team name as text
+          } else {
+            text = ''; // No text when logo is available
+          }
+        } else if (categoryType === 'Country') {
+          // Map country codes to images - NEVER use player silhouettes for countries
+          const countryMap = {
+            'ESP': 'Spain.png',
+            'ENG': 'England.png',
+            'GER': 'germany.webp',
+            'FRA': 'france.webp',
+            'ITA': 'italy.png',
+            'BRA': 'brazil.webp',
+            'ARG': 'afa.png',
+            'POR': 'portugal.png',
+            'BEL': 'belgium.svg',
+            'NED': 'holand.png',
+            'NOR': 'norway.png',
+            'SWE': 'sweden.svg',
+            'URU': 'uruguay.png',
+            'POL': 'poland.webp',
+            'DEN': 'denmark.webp',
+            'USA': 'usa.webp',
+            'SVN': 'slovenia.webp',
+            'SVK': 'slovakia.webp',
+            'KOR': 'korea.webp', // South Korea
+            'UZB': 'uzbekistan.webp' // Uzbekistan
+          };
+          const imageName = countryMap[categoryValue];
+          if (imageName) {
+            imagePath = imageDataUris[imageName] || '';
+          }
+          // If no flag image found, show text only (never use player silhouette)
+          if (!imagePath) {
+            text = categoryValue; // Show country code as text
+          } else {
+            text = ''; // No text when flag image is available
+          }
+        } else if (categoryType === 'League') {
+          // Map league names to images - NEVER use player silhouettes for leagues
+          const leagueMap = {
+            'LaLiga': 'LaLiga.png',
+            'Premier League': 'premier.png',
+            'Bundesliga': 'Bundesliga.png'
+          };
+          const imageName = leagueMap[categoryValue];
+          if (imageName) {
+            imagePath = imageDataUris[imageName] || '';
+          }
+          // If no league logo found, show text only (never use player silhouette)
+          if (!imagePath) {
+            text = categoryValue; // Show league name as text
+          } else {
+            text = ''; // No text when logo is available
+          }
+        } else {
+          // Default fallback
+          imagePath = imageDataUris['Soccer_Player.png'] || '';
+          text = categoryValue;
+        }
+        
+        return { imagePath, text };
+      };
+
+      const render = () => {
+        if (!game) {
+          boardEl.innerHTML = "";
+          statusEl.textContent = "No game loaded";
+          statusEl.className = "status waiting text-base font-semibold";
+          previousMarks.clear();
+          return;
+        }
+
+        // Game rendering (debug logs removed for cleaner console)
+
+        boardEl.innerHTML = "";
+
+        // Update status (preserve Tailwind typography classes)
+        if (game.isComplete) {
+          if (game.winner === "user") {
+            statusEl.textContent = "🎉 You win!";
+            statusEl.className = "status winner text-base font-semibold";
+          } else if (game.winner === "ai") {
+            statusEl.textContent = "😔 AI wins!";
+            statusEl.className = "status winner text-base font-semibold";
+          } else {
+            statusEl.textContent = "🤝 Draw!";
+            statusEl.className = "status draw text-base font-semibold";
+          }
+        } else {
+          if (game.currentTurn === 'user') {
+            statusEl.textContent = "Click a cell to guess the player!";
+            document.getElementById('skipButton').style.display = 'block';
+          } else {
+            statusEl.textContent = "AI is thinking...";
+            document.getElementById('skipButton').style.display = 'none';
+          }
+          statusEl.className = "status waiting text-base font-semibold";
+        }
+
+        // Render 4x4 grid
+        // Row 0: Corner + Column category VALUES
+        // Rows 1-3: Row category VALUES + Player cells
+        
+        for (let row = 0; row < 4; row++) {
+          for (let col = 0; col < 4; col++) {
+            const cell = game.grid[row][col];
+            
+            // Top-left corner (row 0, col 0) - empty
+            if (row === 0 && col === 0) {
+              const cornerCell = document.createElement("div");
+              cornerCell.className = "category-cell";
+              cornerCell.style.background = "#e0e0e0";
+              cornerCell.style.color = "#666";
+              boardEl.appendChild(cornerCell);
+            }
+            // Top row (row 0) - Column category VALUES
+            else if (row === 0) {
+              try {
+                const categoryCell = document.createElement("div");
+                categoryCell.className = "category-cell";
+                const colIndex = col - 1;
+                let categoryType = game.columnCategoryTypes?.[colIndex];
+                const categoryValue = game.columnCategories?.[colIndex] || "";
+                
+                // If categoryType is missing, try to infer it
+                if (!categoryType && categoryValue) {
+                  categoryType = inferCategoryType(categoryValue);
+                }
+                
+                const { imagePath, text } = getCategoryDisplay(categoryType, categoryValue);
+                
+                // Clear any default text
+                categoryCell.textContent = '';
+                categoryCell.style.position = 'relative';
+                categoryCell.style.overflow = 'hidden';
+                categoryCell.style.padding = '0';
+                // Set white background on the cell itself FIRST
+                categoryCell.style.setProperty('background-color', 'white', 'important');
+                
+                // Force remove ALL borders using setProperty with !important
+                categoryCell.style.setProperty('border', '0', 'important');
+                categoryCell.style.setProperty('border-width', '0', 'important');
+                categoryCell.style.setProperty('border-style', 'none', 'important');
+                categoryCell.style.setProperty('border-color', 'transparent', 'important');
+                categoryCell.style.setProperty('outline', '0', 'important');
+                categoryCell.style.setProperty('outline-width', '0', 'important');
+                categoryCell.style.setProperty('outline-style', 'none', 'important');
+                categoryCell.style.setProperty('outline-color', 'transparent', 'important');
+                categoryCell.style.setProperty('box-shadow', 'none', 'important');
+                
+                // Use img element with white background div - more reliable than CSS background
+                const fullImagePath = imagePath;
+                if (fullImagePath) {
+                  // Create white background div
+                  const whiteBg = document.createElement('div');
+                  whiteBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:white;z-index:0;';
+                  categoryCell.appendChild(whiteBg);
+                  
+                  // Create img on top - calculate size to fit within cell
+                  const img = document.createElement('img');
+                  img.src = fullImagePath;
+                  img.alt = categoryValue;
+                  img.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;object-position:center;z-index:1;border:0;outline:0;';
+                  
+                  // Calculate proper size when image loads
+                  img.onload = function() {
+                    const cellWidth = categoryCell.offsetWidth;
+                    const cellHeight = categoryCell.offsetHeight;
+                    const imgWidth = img.naturalWidth;
+                    const imgHeight = img.naturalHeight;
+                    
+                    // Calculate scale to fit with 10% padding
+                    const maxWidth = cellWidth * 0.9;
+                    const maxHeight = cellHeight * 0.9;
+                    const widthRatio = maxWidth / imgWidth;
+                    const heightRatio = maxHeight / imgHeight;
+                    const scale = Math.min(widthRatio, heightRatio);
+                    
+                    // Apply calculated dimensions
+                    img.style.width = (imgWidth * scale) + 'px';
+                    img.style.height = (imgHeight * scale) + 'px';
+                  };
+                  
+                  categoryCell.appendChild(img);
+                }
+                
+                categoryCell.setAttribute('data-category', categoryType);
+                categoryCell.setAttribute('data-value', categoryValue);
+                
+                // Error handling - if image fails to load, show fallback
+                if (!fullImagePath) {
+                  categoryCell.style.backgroundColor = '#111bf5';
+                  categoryCell.style.display = 'flex';
+                  categoryCell.style.alignItems = 'center';
+                  categoryCell.style.justifyContent = 'center';
+                  categoryCell.textContent = categoryValue;
+                  categoryCell.style.color = 'white';
+                  categoryCell.style.padding = '12px';
+                }
+                
+                // ALWAYS show text overlay for Position and Shirt Number categories (even when image is present)
+                // For other categories, only show text if no image is available
+                if ((categoryType === 'Position' || categoryType === 'Shirt Number') && text) {
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                } else if (text && !fullImagePath) {
+                  // For non-Position/Shirt Number categories, show text only if no image
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                }
+                
+                boardEl.appendChild(categoryCell);
+              } catch (error) {
+                console.error('Error rendering column category:', error);
+                // Fallback to text
+                const categoryCell = document.createElement("div");
+                categoryCell.className = "category-cell";
+                const colIndex = col - 1;
+                categoryCell.textContent = game.columnCategories?.[colIndex] || "";
+                boardEl.appendChild(categoryCell);
+              }
+            }
+            // Left column (col 0) - Row category VALUES
+            else if (col === 0) {
+              try {
+                const categoryCell = document.createElement("div");
+                categoryCell.className = "category-cell";
+                const rowIndex = row - 1;
+                let categoryType = game.rowCategoryTypes?.[rowIndex];
+                const categoryValue = game.rowCategories?.[rowIndex] || "";
+                
+                // If categoryType is missing, try to infer it
+                if (!categoryType && categoryValue) {
+                  categoryType = inferCategoryType(categoryValue);
+                }
+                
+                const { imagePath, text } = getCategoryDisplay(categoryType, categoryValue);
+                
+                // Clear any default text
+                categoryCell.textContent = '';
+                categoryCell.style.position = 'relative';
+                categoryCell.style.overflow = 'hidden';
+                categoryCell.style.padding = '0';
+                // Set white background on the cell itself FIRST
+                categoryCell.style.setProperty('background-color', 'white', 'important');
+                
+                // Force remove ALL borders using setProperty with !important
+                categoryCell.style.setProperty('border', '0', 'important');
+                categoryCell.style.setProperty('border-width', '0', 'important');
+                categoryCell.style.setProperty('border-style', 'none', 'important');
+                categoryCell.style.setProperty('border-color', 'transparent', 'important');
+                categoryCell.style.setProperty('outline', '0', 'important');
+                categoryCell.style.setProperty('outline-width', '0', 'important');
+                categoryCell.style.setProperty('outline-style', 'none', 'important');
+                categoryCell.style.setProperty('outline-color', 'transparent', 'important');
+                categoryCell.style.setProperty('box-shadow', 'none', 'important');
+                
+                // Use img element with white background div - more reliable than CSS background
+                const fullImagePath = imagePath;
+                if (fullImagePath) {
+                  // Create white background div
+                  const whiteBg = document.createElement('div');
+                  whiteBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:white;z-index:0;';
+                  categoryCell.appendChild(whiteBg);
+                  
+                  // Create img on top - calculate size to fit within cell
+                  const img = document.createElement('img');
+                  img.src = fullImagePath;
+                  img.alt = categoryValue;
+                  img.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;object-position:center;z-index:1;border:0;outline:0;';
+                  
+                  // Calculate proper size when image loads
+                  img.onload = function() {
+                    const cellWidth = categoryCell.offsetWidth;
+                    const cellHeight = categoryCell.offsetHeight;
+                    const imgWidth = img.naturalWidth;
+                    const imgHeight = img.naturalHeight;
+                    
+                    // Calculate scale to fit with 10% padding
+                    const maxWidth = cellWidth * 0.9;
+                    const maxHeight = cellHeight * 0.9;
+                    const widthRatio = maxWidth / imgWidth;
+                    const heightRatio = maxHeight / imgHeight;
+                    const scale = Math.min(widthRatio, heightRatio);
+                    
+                    // Apply calculated dimensions
+                    img.style.width = (imgWidth * scale) + 'px';
+                    img.style.height = (imgHeight * scale) + 'px';
+                  };
+                  
+                  categoryCell.appendChild(img);
+                }
+                
+                categoryCell.setAttribute('data-category', categoryType);
+                categoryCell.setAttribute('data-value', categoryValue);
+                
+                // Error handling - if image fails to load, show fallback
+                if (!fullImagePath) {
+                  categoryCell.style.backgroundColor = '#111bf5';
+                  categoryCell.style.display = 'flex';
+                  categoryCell.style.alignItems = 'center';
+                  categoryCell.style.justifyContent = 'center';
+                  categoryCell.textContent = categoryValue;
+                  categoryCell.style.color = 'white';
+                  categoryCell.style.padding = '12px';
+                }
+                
+                // ALWAYS show text overlay for Position and Shirt Number categories (even when image is present)
+                // For other categories, only show text if no image is available
+                if ((categoryType === 'Position' || categoryType === 'Shirt Number') && text) {
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                } else if (text && !fullImagePath) {
+                  // For non-Position/Shirt Number categories, show text only if no image
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                }
+                
+                boardEl.appendChild(categoryCell);
+              } catch (error) {
+                console.error('Error rendering row category:', error);
+                // Fallback to text
+                const categoryCell = document.createElement("div");
+                categoryCell.className = "category-cell";
+                const rowIndex = row - 1;
+                categoryCell.textContent = game.rowCategories?.[rowIndex] || "";
+                boardEl.appendChild(categoryCell);
+              }
+            }
+            // Player cells (rows 1-3, cols 1-3)
+            else {
+              const playerCell = document.createElement("div");
+              playerCell.className = "player-cell";
+
+              // Check if player is revealed
+              if (cell.player && cell.mark === 'O') {
+                // Player is revealed (correct guess) - show circle with name inside
+                playerCell.classList.add('revealed');
+                
+                // Check if this is a new mark (not previously rendered)
+                const cellKey = `${row}-${col}`;
+                const wasMarked = previousMarks.has(cellKey) && previousMarks.get(cellKey) === 'O';
+                const shouldAnimate = !wasMarked;
+                
+                // Only disable animation if it's not a new mark
+                const animationStyle = shouldAnimate ? '' : 'style="animation: none !important;"';
+                
+                playerCell.innerHTML = `
+                  <div class="circle-mark" ${animationStyle}>
+                    <div class="player-name-in-mark text-xs font-semibold">${cell.player.Name}</div>
+                  </div>
+                `;
+              } else if (cell.player && cell.mark === 'X') {
+                // AI marked - show X with player name inside
+                playerCell.classList.add('ai-marked');
+                
+                // Check if this is a new mark (not previously rendered)
+                const cellKey = `${row}-${col}`;
+                const wasMarked = previousMarks.has(cellKey) && previousMarks.get(cellKey) === 'X';
+                const shouldAnimate = !wasMarked;
+                
+                // Always animate new X marks (when AI places them after user's O or after skip turn)
+                // Only disable animation for existing marks to prevent re-animation on re-renders
+                const animationStyle = shouldAnimate ? '' : 'style="animation: none !important;"';
+                
+                // Force browser to recognize new element for animation
+                playerCell.innerHTML = '';
+                const xMarkDiv = document.createElement('div');
+                xMarkDiv.className = 'x-mark';
+                if (!shouldAnimate) {
+                  xMarkDiv.style.animation = 'none';
+                }
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'player-name-in-mark text-xs font-semibold';
+                nameDiv.textContent = cell.player.Name;
+                xMarkDiv.appendChild(nameDiv);
+                playerCell.appendChild(xMarkDiv);
+                
+                // Force reflow to ensure animation triggers
+                if (shouldAnimate) {
+                  void xMarkDiv.offsetWidth;
+                }
+              } else {
+                // Empty cell - clickable
+                if (!game.isComplete && game.currentTurn === 'user') {
+                  playerCell.onclick = () => openSearch(row, col);
+                }
+              }
+
+              boardEl.appendChild(playerCell);
+            }
+          }
+        }
+        
+        // Update previousMarks map for next render comparison
+        // Store the marks BEFORE this render, so we can detect new marks in the NEXT render
+        const currentMarks = new Map();
+        for (let row = 1; row < 4; row++) {
+          for (let col = 1; col < 4; col++) {
+            const cell = game.grid[row][col];
+            if (cell && cell.mark) {
+              currentMarks.set(`${row}-${col}`, cell.mark);
+            }
+          }
+        }
+        // Update previousMarks AFTER rendering, so next render can compare
+        previousMarks = currentMarks;
+      };
+
+      // No polling needed - state updates come through events (OpenAI Apps SDK pattern)
+
+      // Skip turn function
+      async function skipTurn() {
+        if (!game || game.isComplete || game.currentTurn !== 'user') {
+          return;
+        }
+        
+        try {
+          // Call tool directly for immediate feedback
+          const updatedGame = await callMcpTool("skip_turn", {
+            gameId: game.id
+          });
+          // Render after getting the updated game to show the AI's X mark with animation
+          if (updatedGame) {
+            game = updatedGame;
+            updateWidgetState({ game });
+            requestAnimationFrame(() => {
+              render();
+            });
+          }
+        } catch (error) {
+          console.error('Error skipping turn:', error);
+          alert('Error: ' + (error.message || 'Failed to skip turn'));
+        }
+      }
+
+      // Make functions available globally
+      window.closeSearch = closeSearch;
+      window.skipTurn = skipTurn;
+
+      // Initialize widget on load
+      function initialize() {
+        // Set stadium background image from data URI
+        const imageDataUris = window.IMAGE_DATA_URIS || {};
+        const stadiumBg = imageDataUris['stadium-background.jpg'];
+        if (stadiumBg) {
+          const style = document.createElement('style');
+          style.textContent = `
+            body::before {
+              background-image: url('${stadiumBg}');
+            }
+          `;
+          document.head.appendChild(style);
+        }
+        
+        // Request fullscreen display mode for the game
+        if (window.openai?.requestDisplayMode && typeof window.openai.requestDisplayMode === 'function') {
+          window.openai.requestDisplayMode({ mode: 'fullscreen' });
+        }
+        
+        // Set up state listeners first
+        setupWidgetStateListener();
+        
+        // Initialize from widget state
+        initializeWidgetState();
+        
+        // Load players for autocomplete (this can still use HTTP as it's just data loading)
+        loadAllPlayers().then(() => {
+          // Initial render
+          render();
+        });
+      }
+
+      // Run initialization when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+      } else {
+        initialize();
+      }
+    </script>
+  </body>
+</html>
+
+

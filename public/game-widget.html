@@ -64,7 +64,9 @@
         width: 100%;
         height: 100%;
         z-index: -1;
-        background-color: #16a34a; /* Green 600 fallback */
+        /* Use a dark neutral fallback so we don't flash a bright green screen
+           while the soccer pitch background image is loading. */
+        background-color: #020617; /* Slate 950-style dark background */
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
@@ -168,7 +170,70 @@
       .intro-actions {
         margin-top: auto;
         display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+
+      /* Loading Indicator (Apps SDK UI Circular Progress) */
+      .loading-indicator {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+
+
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #374151; /* Gray 700 */
+        border-top-color: #111bf5; /* Apps SDK UI primary blue */
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      /* Small spinner for image loading */
+      .image-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #9ca3af; /* Gray 400 */
+        border-top-color: #111bf5; /* Apps SDK UI primary blue */
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Game loading overlay */
+      .game-loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #1f2937; /* Gray 800 - match main background */
+        z-index: 100;
+        display: flex;
+        align-items: center;
         justify-content: center;
+        border-radius: 16px;
+      }
+
+      .game-loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
       }
       @media (max-width: 640px) {
         .intro-teams-grid {
@@ -183,27 +248,36 @@
       }
 
       .intro-start-button {
-        padding: 10px 28px;
-        background: #6b7280; /* Gray 500 - neutral button */
-        color: #f9fafb;
+        padding: 12px 32px;
+        background: #374151; /* Gray 700 - lighter than Gray 900 background */
+        color: #ffffff;
         border: none;
-        border-radius: 999px;
-        font-size: 14px;
-        font-weight: 500;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
         cursor: pointer;
-        transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
-        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.4);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        font-family: 'Poppins', sans-serif;
+        min-width: 140px;
       }
 
-      .intro-start-button:hover {
+      .intro-start-button:disabled {
         background: #4b5563; /* Gray 600 */
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.5);
+        cursor: not-allowed;
+        opacity: 0.7;
+        box-shadow: none;
       }
 
-      .intro-start-button:active {
+      .intro-start-button:hover:not(:disabled) {
+        background: #4b5563; /* Gray 600 - lighter on hover */
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      .intro-start-button:active:not(:disabled) {
         transform: translateY(0);
-        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.4);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
 
       /* Responsive design - Mobile first approach */
@@ -418,6 +492,8 @@
         grid-template-rows: 1fr 1fr 1fr 1fr;
         gap: 8px;
         margin-bottom: 16px;
+        background: #1f2937; /* Gray 800 - match main background to prevent white flash */
+        min-height: 400px;
       }
 
       .category-cell {
@@ -1038,11 +1114,21 @@
         </div>
       </div>
       <div class="intro-actions">
-        <button id="startGameButton" class="intro-start-button">Start Game</button>
+        <!-- Loading Indicator (Apps SDK UI Circular Progress) -->
+        <div id="imageLoadingIndicator" class="loading-indicator" style="display: none;">
+          <div class="spinner"></div>
+        </div>
+        <button id="startGameButton" class="intro-start-button" disabled style="display: none;">Start Game</button>
       </div>
     </div>
 
     <main id="mainGame" style="display: none;">
+      <!-- Loading overlay for game board -->
+      <div id="gameLoadingOverlay" class="game-loading-overlay" style="display: none;">
+        <div class="game-loading-content">
+          <div class="spinner"></div>
+        </div>
+      </div>
       <div id="gameBoard" class="game-board"></div>
       <div style="text-align: center;">
         <button id="skipButton" class="skip-button text-base font-semibold" onclick="skipTurn()" style="display: none;">Skip Turn</button>
@@ -2071,6 +2157,24 @@
           previousMarks.clear();
           const sliderContainer = document.querySelector("#difficultySlider");
           if (sliderContainer) sliderContainer.style.display = 'none';
+          const loadingOverlay = document.getElementById('gameLoadingOverlay');
+          if (loadingOverlay) loadingOverlay.style.display = 'none';
+          return;
+        }
+
+        // Show loading overlay FIRST - before any rendering
+        const loadingOverlay = document.getElementById('gameLoadingOverlay');
+        if (loadingOverlay) {
+          loadingOverlay.style.display = 'flex';
+        }
+
+        // Ensure images are available before rendering
+        const imageDataUris = window.IMAGE_DATA_URIS || {};
+        if (Object.keys(imageDataUris).length === 0) {
+          // Images not ready yet - wait and re-render
+          setTimeout(() => {
+            if (game) render();
+          }, 50);
           return;
         }
 
@@ -2080,6 +2184,45 @@
         // Game rendering (debug logs removed for cleaner console)
 
         boardEl.innerHTML = "";
+        
+        // Track images that need to load
+        let imagesToLoad = 0;
+        let imagesLoaded = 0;
+        
+        // Fallback timeout to ensure overlay always hides (max 2 seconds)
+        let overlayTimeout = setTimeout(() => {
+          if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+          }
+        }, 2000);
+        
+        const checkAllImagesLoaded = () => {
+          imagesLoaded++;
+          if (imagesToLoad > 0 && imagesLoaded >= imagesToLoad && loadingOverlay) {
+            // All images loaded, hide overlay with slight delay for smooth transition
+            clearTimeout(overlayTimeout);
+            setTimeout(() => {
+              if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+              }
+            }, 100);
+          } else if (imagesToLoad === 0 && loadingOverlay) {
+            // No images to load, hide immediately
+            clearTimeout(overlayTimeout);
+            setTimeout(() => {
+              if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+              }
+            }, 50);
+          }
+        };
+        
+        // Check if no images after a short delay (in case all are already cached)
+        setTimeout(() => {
+          if (imagesToLoad === 0) {
+            checkAllImagesLoaded();
+          }
+        }, 50);
 
         // Handle game completion - show win modal for user wins
         if (game.isComplete && game.winner === "user") {
@@ -2170,14 +2313,20 @@
                 // Use img element with white background div - more reliable than CSS background
                 const fullImagePath = imagePath;
                 if (fullImagePath) {
+                  imagesToLoad++;
+                  
                   // Create Gray 100 background div
                   const grayBg = document.createElement('div');
                   grayBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:#f3f4f6;z-index:0;';
                   categoryCell.appendChild(grayBg);
                   
+                  // Create loading spinner
+                  const spinner = document.createElement('div');
+                  spinner.className = 'image-spinner';
+                  categoryCell.appendChild(spinner);
+                  
                   // Create img on top - calculate size to fit within cell
                   const img = document.createElement('img');
-                  img.src = fullImagePath;
                   img.alt = categoryValue;
                   // For Position categories (not Goalkeeper), move image up slightly to avoid text overlap
                   const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
@@ -2188,8 +2337,15 @@
                   // Set initial max size to prevent oversized images before onload
                   img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};`;
                   
-                  // Calculate proper size when image loads
-                  img.onload = function() {
+                  // Function to calculate and apply proper size and hide spinner
+                  const calculateSize = function() {
+                    // Hide spinner when image loads
+                    if (spinner.parentNode) {
+                      spinner.style.display = 'none';
+                    }
+                    // Show image
+                    img.style.opacity = '1';
+                    
                     const cellWidth = categoryCell.offsetWidth;
                     const cellHeight = categoryCell.offsetHeight;
                     const imgWidth = img.naturalWidth;
@@ -2220,7 +2376,32 @@
                     const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
                     const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
                     img.style.transform = imageTransform;
+                    
+                    // Notify that image loaded
+                    checkAllImagesLoaded();
                   };
+                  
+                  // Set initial opacity
+                  img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};opacity:0;transition:opacity 0.2s;`;
+                  
+                  // Set up onload handler before setting src
+                  img.onload = calculateSize;
+                  img.onerror = () => {
+                    // Hide spinner on error
+                    if (spinner.parentNode) {
+                      spinner.style.display = 'none';
+                    }
+                    // Still count as loaded for overlay
+                    checkAllImagesLoaded();
+                  };
+                  
+                  // Set src - browser will use cache if preloaded
+                  img.src = fullImagePath;
+                  
+                  // If image is already loaded (from cache/preload), calculate size immediately
+                  if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    calculateSize();
+                  }
                   
                   categoryCell.appendChild(img);
                 }
@@ -2312,14 +2493,20 @@
                 // Use img element with white background div - more reliable than CSS background
                 const fullImagePath = imagePath;
                 if (fullImagePath) {
+                  imagesToLoad++;
+                  
                   // Create Gray 100 background div
                   const grayBg = document.createElement('div');
                   grayBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:#f3f4f6;z-index:0;';
                   categoryCell.appendChild(grayBg);
                   
+                  // Create loading spinner
+                  const spinner = document.createElement('div');
+                  spinner.className = 'image-spinner';
+                  categoryCell.appendChild(spinner);
+                  
                   // Create img on top - calculate size to fit within cell
                   const img = document.createElement('img');
-                  img.src = fullImagePath;
                   img.alt = categoryValue;
                   // For Position categories (not Goalkeeper), move image up slightly to avoid text overlap
                   const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
@@ -2330,8 +2517,15 @@
                   // Set initial max size to prevent oversized images before onload
                   img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};`;
                   
-                  // Calculate proper size when image loads
-                  img.onload = function() {
+                  // Function to calculate and apply proper size and hide spinner
+                  const calculateSize = function() {
+                    // Hide spinner when image loads
+                    if (spinner.parentNode) {
+                      spinner.style.display = 'none';
+                    }
+                    // Show image
+                    img.style.opacity = '1';
+                    
                     const cellWidth = categoryCell.offsetWidth;
                     const cellHeight = categoryCell.offsetHeight;
                     const imgWidth = img.naturalWidth;
@@ -2362,7 +2556,32 @@
                     const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
                     const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
                     img.style.transform = imageTransform;
+                    
+                    // Notify that image loaded
+                    checkAllImagesLoaded();
                   };
+                  
+                  // Set initial opacity
+                  img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};opacity:0;transition:opacity 0.2s;`;
+                  
+                  // Set up onload handler before setting src
+                  img.onload = calculateSize;
+                  img.onerror = () => {
+                    // Hide spinner on error
+                    if (spinner.parentNode) {
+                      spinner.style.display = 'none';
+                    }
+                    // Still count as loaded for overlay
+                    checkAllImagesLoaded();
+                  };
+                  
+                  // Set src - browser will use cache if preloaded
+                  img.src = fullImagePath;
+                  
+                  // If image is already loaded (from cache/preload), calculate size immediately
+                  if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    calculateSize();
+                  }
                   
                   categoryCell.appendChild(img);
                 }
@@ -2708,17 +2927,179 @@
           });
         }
 
+        // Pre-load all game images when intro screen loads
+        // Force decode by creating Image objects and loading them into memory
+        // Priority: Load axis images (teams, countries, leagues) first, then others
+        function preloadGameImages() {
+          const imageDataUris = window.IMAGE_DATA_URIS || {};
+          
+          // Priority 1: Axis images (most important - shown immediately)
+          const priorityImages = [
+            // Team logos (most common on axes)
+            'barca.png', 'madrid.png', 'atletico.svg', 'mancity.png', 'united.png',
+            'Chelsea.png', 'Liverpool_FC.png', 'arsenal.png', 'tottenham.png', 'bayern.svg',
+            // Country flags
+            'Spain.png', 'England.png', 'germany.webp', 'france.webp', 'italy.png',
+            'brazil.webp', 'afa.png', 'portugal.png', 'belgium.svg', 'holand.png',
+            'norway.png', 'sweden.svg', 'uruguay.png', 'poland.webp', 'denmark.webp',
+            'usa.webp', 'slovenia.webp', 'slovakia.webp', 'korea.webp', 'uzbekistan.webp',
+            // League logos
+            'LaLiga.png', 'premier.png', 'Bundesliga.png'
+          ];
+          
+          // Priority 2: Other images
+          const otherImages = [
+            // Position images
+            'Goalkeeper.webp', 'Soccer_Player.png',
+            // Other
+            'Shirt_Number.png', 'Logo.png', 'soccer_pitch.png'
+          ];
+          
+          const imagesToPreload = [...priorityImages, ...otherImages];
+
+          // Preload images - simplified and faster approach
+          const preloadPromises = imagesToPreload.map(imageName => {
+            const uri = imageDataUris[imageName];
+            if (!uri) return Promise.resolve();
+            
+            return new Promise((resolve) => {
+              const img = new Image();
+              
+              // Use decode() API for fastest decoding
+              if (img.decode && typeof img.decode === 'function') {
+                img.onerror = () => resolve();
+                img.src = uri;
+                img.decode().then(() => resolve()).catch(() => resolve());
+              } else {
+                // Fallback
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+                img.src = uri;
+              }
+            });
+          });
+
+          return Promise.all(preloadPromises);
+        }
+
+        // Pre-load images when intro screen is visible
+        let imagesPreloaded = false;
+        let preloadPromise = null;
+        const loadingIndicator = document.getElementById('imageLoadingIndicator');
+        
+        function showLoadingIndicator() {
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'flex';
+          }
+          const btn = document.getElementById('startGameButton');
+          if (btn) {
+            btn.style.display = 'none';
+            btn.disabled = true;
+          }
+        }
+        
+        function hideLoadingIndicator() {
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+          }
+          const btn = document.getElementById('startGameButton');
+          if (btn) {
+            btn.style.display = 'block';
+            btn.disabled = false;
+          }
+        }
+        
+        function ensureImagesPreloaded() {
+          if (imagesPreloaded) {
+            hideLoadingIndicator();
+            return Promise.resolve();
+          }
+          if (preloadPromise) return preloadPromise;
+          
+          showLoadingIndicator();
+          
+          preloadPromise = new Promise((resolve) => {
+            const imageDataUris = window.IMAGE_DATA_URIS;
+            if (!imageDataUris || Object.keys(imageDataUris).length === 0) {
+              // Wait for images to be available, check more frequently
+              let attempts = 0;
+              const checkInterval = setInterval(() => {
+                const dataUris = window.IMAGE_DATA_URIS;
+                if (dataUris && Object.keys(dataUris).length > 0) {
+                  clearInterval(checkInterval);
+                  preloadGameImages().then(() => {
+                    imagesPreloaded = true;
+                    hideLoadingIndicator();
+                    resolve();
+                  });
+                } else if (++attempts >= 40) {
+                  // Give up after 4 seconds (40 * 100ms)
+                  clearInterval(checkInterval);
+                  imagesPreloaded = true;
+                  hideLoadingIndicator();
+                  resolve();
+                }
+              }, 100); // Check every 100ms instead of 300ms
+            } else {
+                  preloadGameImages().then(() => {
+                    imagesPreloaded = true;
+                    hideLoadingIndicator();
+                    resolve();
+                  });
+            }
+          });
+          
+          return preloadPromise;
+        }
+
+        // Start preloading images immediately when intro screen loads
+        // Check for images more aggressively
+        let imageCheckInterval = null;
+        function startAggressiveImagePreload() {
+          if (imageCheckInterval) return;
+          
+          // Show loading indicator and hide button immediately
+          showLoadingIndicator();
+          
+          imageCheckInterval = setInterval(() => {
+            const imageDataUris = window.IMAGE_DATA_URIS;
+            if (imageDataUris && Object.keys(imageDataUris).length > 0) {
+              clearInterval(imageCheckInterval);
+              imageCheckInterval = null;
+              // Start preloading - this will hide indicator and show button when done
+              ensureImagesPreloaded();
+            }
+          }, 50); // Check every 50ms for faster detection
+        }
+        
+        // Start preloading as soon as page loads
+        startAggressiveImagePreload();
+
         // Handle transition from intro screen to main game (Apps SDK UI animateLayout-style transition)
         const introScreen = document.getElementById("introScreen");
         const mainGame = document.getElementById("mainGame");
         const startGameButton = document.getElementById("startGameButton");
         if (introScreen && mainGame && startGameButton) {
-          startGameButton.addEventListener("click", () => {
+          startGameButton.addEventListener("click", async () => {
+            // Ensure images are preloaded before transitioning
+            await ensureImagesPreloaded();
+            
             introScreen.classList.add("hidden");
             // After the fade/slide animation, hide intro and show main game
             setTimeout(() => {
               introScreen.style.display = "none";
               mainGame.style.display = "block";
+              
+              // Request fullscreen display mode when game starts
+              if (window.openai?.requestDisplayMode && typeof window.openai.requestDisplayMode === 'function') {
+                window.openai.requestDisplayMode({ mode: 'fullscreen' });
+              }
+              
+              // Show loading overlay immediately before any rendering
+              const loadingOverlay = document.getElementById('gameLoadingOverlay');
+              if (loadingOverlay) {
+                loadingOverlay.style.display = 'flex';
+              }
               // Ensure we have images loaded for axes; if they arrive slightly later,
               // schedule a re-render once data URIs are available.
               scheduleImageHydrate();

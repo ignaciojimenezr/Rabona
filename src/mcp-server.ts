@@ -13,9 +13,22 @@ import { GameEngine } from "./GameEngine.js";
 import { SquadStore } from "./SquadStore.js";
 import type { PlayerRecord } from "./types.js";
 
+// Cache widget HTML to avoid reloading on every request (performance optimization)
+let cachedGameHtml: string | null = null;
+let lastHtmlLoadTime: number = 0;
+const HTML_CACHE_TTL = 5000; // Cache for 5 seconds (balance between performance and hot-reload)
+
 // Function to load widget HTML and embed images as base64 data URIs
-// This is called dynamically so HTML changes are picked up without server restart
+// HTML is cached for 5 seconds to improve performance while still allowing hot-reload
 function loadGameHtml(): string {
+  const now = Date.now();
+  
+  // Return cached HTML if still valid
+  if (cachedGameHtml && (now - lastHtmlLoadTime) < HTML_CACHE_TTL) {
+    return cachedGameHtml;
+  }
+  
+  // Reload HTML file
   let gameHtml = readFileSync("public/game-widget.html", "utf8");
   
   // Get server URL from environment or default to localhost:3000
@@ -41,6 +54,10 @@ function loadGameHtml(): string {
   } else {
     gameHtml = imageDataScript + gameHtml;
   }
+  
+  // Cache the processed HTML
+  cachedGameHtml = gameHtml;
+  lastHtmlLoadTime = now;
   
   return gameHtml;
 }
@@ -297,8 +314,8 @@ function createMcpServer() {
         // If game is not complete, add a delay before AI makes its move
         // This makes the AI feel less automatic and more natural
         if (!result.game.isComplete && result.game.currentTurn === 'ai') {
-          // Wait at least 1 second before AI move
-          await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000)); // 1-2 seconds
+          // Wait up to 1 second before AI move
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 1000)); // 0-1 second
           
           // Make AI move after delay
           const aiResult = gameEngine.makeAIMove(result.game);

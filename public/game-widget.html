@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
     <title>Tic Tac Soccer</title>
+    <!-- Google Fonts - Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <!-- OpenAI Apps SDK for transitions -->
     <script type="module" src="https://cdn.jsdelivr.net/npm/@openai/apps-sdk@latest/dist/index.js"></script>
     <!-- Tailwind CSS for shadcn/ui typography -->
@@ -13,24 +17,24 @@
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+              sans: ['Poppins', 'system-ui', '-apple-system', 'sans-serif'],
             },
           },
         },
       }
       // Verify Tailwind is loaded
       document.addEventListener('DOMContentLoaded', () => {
-        if (typeof tailwind !== 'undefined') {
-          console.log('✓ Tailwind CSS loaded successfully');
+      if (typeof tailwind !== 'undefined') {
+        console.log('✓ Tailwind CSS loaded successfully');
         } else {
           console.error('❌ Tailwind CSS failed to load!');
-        }
+      }
       });
     </script>
     <style>
       :root {
-        color: #0b0b0f;
-        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        color: #000000; /* Black 900 */
+        font-family: "Poppins", system-ui, -apple-system, sans-serif;
       }
 
       html,
@@ -44,6 +48,11 @@
 
       body {
         position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 16px;
       }
 
       /* Background wrapper that covers the entire viewport */
@@ -55,46 +64,172 @@
         width: 100%;
         height: 100%;
         z-index: -1;
+        background-color: #16a34a; /* Green 600 fallback */
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
         background-repeat: no-repeat;
-        /* Background image will be set via JavaScript using data URI */
-      }
-
-      /* Optimize background for mobile devices */
-      @media (max-width: 768px) {
-        body::before {
-          background-attachment: scroll; /* Better performance on mobile */
-          background-position: center top;
-        }
+        /* Soccer pitch image will be set via JavaScript using data URI */
       }
 
       main {
         width: 100%;
         max-width: 600px;
         min-height: 400px;
-        margin: 0 auto;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
+        margin: 0;
+        background: #1f2937; /* Gray 800 from Apps SDK UI - lighter charcoal black */
         border-radius: 16px;
         padding: 20px;
-        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
         position: relative;
         z-index: 1;
       }
 
+      /* Intro / Instructions Screen (shown before main game) */
+      .intro-container {
+        width: 100%;
+        max-width: 600px;
+        min-height: 400px;
+        margin: 0;
+        background: #111827; /* Gray 900 - dark background */
+        border-radius: 16px;
+        padding: 24px 24px 28px 24px;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        color: #f9fafb; /* Gray 50 */
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+
+      .intro-container.hidden {
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+      }
+
+      .intro-title {
+        font-size: 20px;
+        font-weight: 500;
+        margin: 0;
+        text-align: center;
+      }
+
+      .intro-section-label {
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #9ca3af; /* Gray 400 */
+        margin-top: 4px;
+      }
+
+      .intro-teams-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .intro-team {
+        position: relative;
+        aspect-ratio: 1 / 1;
+        border-radius: 12px;
+        background: #111827; /* match main game background */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+      }
+
+      .intro-team img {
+        position: absolute;
+        inset: 12px;
+        width: calc(100% - 24px);
+        height: calc(100% - 24px);
+        object-fit: contain;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+        transition: transform 0.18s ease;
+      }
+
+      .intro-team:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+        background: #020617; /* Gray 950 */
+      }
+
+      .intro-team:hover img {
+        transform: scale(1.05);
+      }
+
+      .intro-actions {
+        margin-top: auto;
+        display: flex;
+        justify-content: center;
+      }
+      @media (max-width: 640px) {
+        .intro-teams-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 420px) {
+        .intro-teams-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      .intro-start-button {
+        padding: 10px 28px;
+        background: #6b7280; /* Gray 500 - neutral button */
+        color: #f9fafb;
+        border: none;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.4);
+      }
+
+      .intro-start-button:hover {
+        background: #4b5563; /* Gray 600 */
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.5);
+      }
+
+      .intro-start-button:active {
+        transform: translateY(0);
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.4);
+      }
+
       /* Responsive design - Mobile first approach */
       @media (max-width: 768px) {
+        body {
+          padding: 12px;
+          align-items: flex-start; /* Allow scrolling on mobile */
+        }
+
         main {
           padding: 16px;
           border-radius: 12px;
           margin: 0;
           max-width: 100%;
+          background: #1f2937; /* Gray 800 - lighter charcoal black */
+        }
+
+        .difficulty-slider-container {
+          left: 12px;
+          right: 12px;
+          bottom: 12px;
+          max-width: none;
         }
 
         .game-board {
-          grid-template-columns: 80px 1fr 1fr 1fr;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
           gap: 6px;
         }
 
@@ -140,13 +275,30 @@
       }
 
       @media (max-width: 480px) {
+        body {
+          padding: 8px;
+          align-items: flex-start; /* Allow scrolling on mobile */
+        }
+
         main {
           padding: 12px;
           border-radius: 8px;
+          background: #1f2937; /* Gray 800 - lighter charcoal black */
+        }
+
+        .difficulty-slider-container {
+          left: 8px;
+          right: 8px;
+          bottom: 8px;
+          padding: 10px 12px;
+        }
+
+        .difficulty-slider-label {
+          font-size: 11px;
         }
 
         .game-board {
-          grid-template-columns: 70px 1fr 1fr 1fr;
+          grid-template-columns: 1fr 1fr 1fr 1fr;
           gap: 4px;
         }
 
@@ -251,10 +403,9 @@
 
       /* Dark mode support (respects system preference) */
       @media (prefers-color-scheme: dark) {
-        /* Note: Following Apps SDK guidelines, we maintain light mode
-           but can add subtle adjustments if needed */
+        /* Maintain charcoal black background */
         main {
-          background: rgba(255, 255, 255, 0.98);
+          background: #1f2937; /* Gray 800 - lighter charcoal black */
         }
       }
 
@@ -263,15 +414,15 @@
 
       .game-board {
         display: grid;
-        grid-template-columns: 120px 1fr 1fr 1fr;
-        grid-template-rows: auto 1fr 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr 1fr;
         gap: 8px;
         margin-bottom: 16px;
       }
 
       .category-cell {
         background-color: #111bf5; /* Fallback color */
-        color: white;
+        color: #000000; /* Black 900 */
         min-height: 100px;
         width: 100%;
         aspect-ratio: 1; /* Make cells square for better image display */
@@ -291,14 +442,13 @@
         outline-style: none !important;
         outline-color: transparent !important;
         box-shadow: none !important; /* Remove any box shadows */
-        /* Force white background to show through transparent image areas */
-        background-color: white !important;
+        /* Gray 100 background from Apps SDK UI */
+        background-color: #f3f4f6 !important;
       }
       
       .category-cell img {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
+        /* Size is controlled by JavaScript for proper scaling */
+        object-fit: contain !important;
         object-position: center !important;
         display: block !important;
         border: none !important; /* Explicitly remove any borders */
@@ -315,7 +465,7 @@
       }
 
       .player-cell {
-        background: #fff;
+        background: #f3f4f6; /* Gray 100 from Apps SDK UI */
         border: 2px solid #cad3e0;
         padding: 12px;
         border-radius: 10px;
@@ -332,12 +482,12 @@
 
       .player-cell:hover:not(.revealed):not(.ai-marked) {
         border-color: #111bf5;
-        background: #f8f9fa;
+        background: #e5e7eb; /* Gray 200 for hover - slightly darker */
       }
 
       .player-cell.revealed {
-        background: #fff;
-        color: #0b0b0f;
+        background: #f3f4f6; /* Gray 100 from Apps SDK UI */
+        color: #000000; /* Black 900 */
         border-color: #cad3e0;
         cursor: default;
         position: relative;
@@ -378,7 +528,7 @@
       }
 
       .player-cell.revealed .circle-mark .player-name-in-mark {
-        color: #0b0b0f;
+        color: #000000; /* Black 900 */
         text-align: center;
         padding: 4px;
         line-height: 1.1;
@@ -391,8 +541,8 @@
       }
 
       .player-cell.ai-marked {
-        background: #fff;
-        color: #0b0b0f;
+        background: #f3f4f6; /* Gray 100 from Apps SDK UI */
+        color: #000000; /* Black 900 */
         border-color: #cad3e0;
         cursor: default;
         position: relative;
@@ -447,7 +597,7 @@
       }
 
       .player-cell.ai-marked .x-mark .player-name-in-mark {
-        color: #0b0b0f;
+        color: #000000; /* Black 900 */
         text-align: center;
         padding: 4px;
         line-height: 1.1;
@@ -499,7 +649,7 @@
       .skip-button {
         padding: 10px 20px;
         background: #111bf5;
-        color: white;
+        color: #000000; /* Black 900 */
         border: none;
         border-radius: 8px;
         cursor: pointer;
@@ -594,7 +744,7 @@
 
       /* Typography now handled by Tailwind classes */
       .suggestion-details {
-        color: #666;
+        color: #000000; /* Black 900 */
       }
 
       .search-close {
@@ -604,19 +754,320 @@
         background: none;
         border: none;
         cursor: pointer;
-        color: #666;
+        color: #000000; /* Black 900 */
+      }
+
+      /* Difficulty Progress Slider (Apps SDK UI Slider pattern) */
+      .difficulty-slider-container {
+        position: relative;
+        width: 100%;
+        margin-top: 20px;
+        background: #1f2937; /* Gray 800 - same as main container */
+        padding: 16px;
+        border-radius: 12px;
+      }
+
+      .difficulty-slider-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ffffff; /* White text on dark background */
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .difficulty-slider-label .current-level {
+        color: #ffffff; /* White text on dark background */
+      }
+
+      .difficulty-slider-label .next-level {
+        color: #ffffff; /* White text on dark background */
+      }
+
+      .difficulty-slider {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #374151; /* Gray 700 */
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+        cursor: not-allowed; /* Non-interactive */
+        pointer-events: none; /* Prevent user interaction */
+      }
+
+      .difficulty-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #10b981; /* Green for Easy */
+        cursor: not-allowed;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .difficulty-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #10b981; /* Green for Easy */
+        cursor: not-allowed;
+        border: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .difficulty-slider.easy::-webkit-slider-thumb {
+        background: #10b981; /* Green */
+      }
+
+      .difficulty-slider.medium::-webkit-slider-thumb {
+        background: #f59e0b; /* Orange */
+      }
+
+      .difficulty-slider.hard::-webkit-slider-thumb {
+        background: #ef4444; /* Red */
+      }
+
+      .difficulty-slider.easy::-moz-range-thumb {
+        background: #10b981; /* Green */
+      }
+
+      .difficulty-slider.medium::-moz-range-thumb {
+        background: #f59e0b; /* Orange */
+      }
+
+      .difficulty-slider.hard::-moz-range-thumb {
+        background: #ef4444; /* Red */
+      }
+
+      /* Progress track fill */
+      .difficulty-slider-track {
+        position: relative;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #374151; /* Gray 700 */
+        overflow: hidden;
+      }
+
+      .difficulty-slider-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .difficulty-slider-fill.easy {
+        background: linear-gradient(to right, #10b981, #34d399); /* Green gradient */
+      }
+
+      .difficulty-slider-fill.medium {
+        background: linear-gradient(to right, #f59e0b, #fbbf24); /* Orange gradient */
+      }
+
+      .difficulty-slider-fill.hard {
+        background: linear-gradient(to right, #ef4444, #f87171); /* Red gradient */
+      }
+
+      /* Win Modal Styles */
+      .win-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(8px);
+      }
+
+      .win-modal.active {
+        display: flex;
+      }
+
+      .win-modal-content {
+        background: #111827; /* Gray 900 - darker than button */
+        border-radius: 16px;
+        padding: 32px;
+        text-align: center;
+        max-width: 300px;
+        width: 90%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        animation: growIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      @keyframes growIn {
+        0% {
+          opacity: 0;
+          transform: scale(0.5);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      .win-title {
+        font-size: 32px;
+        font-weight: 400; /* Thinner/lighter font weight */
+        margin: 0 0 24px 0;
+        color: #ffffff; /* White text on dark background */
+      }
+
+      .win-message {
+        display: none; /* Hide duplicate message */
+      }
+
+      /* Continue Button (OpenAI Apps SDK UI - Gray 700 base, 600 hover) */
+      .continue-button {
+        padding: 14px 32px;
+        background: #374151; /* Gray 700 - lighter than modal */
+        color: #ffffff; /* White text */
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 400;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        display: block;
+        margin: 0 auto;
+        width: 100%;
+      }
+
+      .continue-button:hover {
+        background: #4b5563; /* Gray 600 - lighter on hover */
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+      }
+
+      .continue-button:active {
+        background: #374151; /* Gray 700 */
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Level Transition Overlay (Continuous Transition) */
+      .level-transition {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.95);
+        z-index: 3000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .level-transition-content {
+        text-align: center;
+        animation: slideUpFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      @keyframes slideUpFadeIn {
+        0% {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .level-transition-text {
+        font-size: 64px;
+        font-weight: 800;
+        color: #000000; /* Black 900 */
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+      }
+
+      .level-transition-text.easy {
+        color: #000000; /* Black 900 */
+      }
+
+      .level-transition-text.medium {
+        color: #000000; /* Black 900 */
+      }
+
+      .level-transition-text.hard {
+        color: #000000; /* Black 900 */
       }
     </style>
   </head>
   <body>
-    <main>
-      <h2 class="scroll-m-20 text-4xl font-extrabold tracking-tight mb-4 text-slate-900 leading-tight">⚽ Tic Tac Soccer</h2>
-      <div id="status" class="status waiting text-base font-semibold">Loading game...</div>
+    <!-- Intro / Instructions Screen -->
+    <div id="introScreen" class="intro-container">
+      <div>
+        <p class="intro-title">Match 3 players in a row and advance to the next level!</p>
+      </div>
+      <div>
+        <div class="intro-section-label">Teams included</div>
+        <div class="intro-teams-grid" id="introTeamsGrid">
+          <!-- 10 team logo slots (2 rows x 5 columns) -->
+          <div class="intro-team" data-team="FC Barcelona"></div>
+          <div class="intro-team" data-team="Real Madrid"></div>
+          <div class="intro-team" data-team="Atletico Madrid"></div>
+          <div class="intro-team" data-team="Manchester City"></div>
+          <div class="intro-team" data-team="Manchester United"></div>
+          <div class="intro-team" data-team="Chelsea"></div>
+          <div class="intro-team" data-team="Liverpool"></div>
+          <div class="intro-team" data-team="Arsenal"></div>
+          <div class="intro-team" data-team="Tottenham Hotspur"></div>
+          <div class="intro-team" data-team="Bayern Munich"></div>
+        </div>
+      </div>
+      <div class="intro-actions">
+        <button id="startGameButton" class="intro-start-button">Start Game</button>
+      </div>
+    </div>
+
+    <main id="mainGame" style="display: none;">
       <div id="gameBoard" class="game-board"></div>
       <div style="text-align: center;">
         <button id="skipButton" class="skip-button text-base font-semibold" onclick="skipTurn()" style="display: none;">Skip Turn</button>
       </div>
-    </main>
+      <!-- Difficulty Progress Slider -->
+      <div id="difficultySlider" class="difficulty-slider-container" style="display: none;">
+      <div class="difficulty-slider-label">
+        <span class="current-level" id="currentLevelText">Easy</span>
+        <span class="next-level" id="nextLevelText">→ Medium</span>
+      </div>
+      <div class="difficulty-slider-track">
+        <div id="difficultySliderFill" class="difficulty-slider-fill easy" style="width: 0%;"></div>
+      </div>
+      <input 
+        type="range" 
+        id="difficultySliderInput" 
+        class="difficulty-slider easy" 
+        min="0" 
+        max="100" 
+        value="0" 
+        disabled
+        readonly
+        style="display: none;"
+      />
+    </div>
 
     <!-- Search Modal -->
     <div id="searchModal" class="search-modal">
@@ -633,6 +1084,24 @@
           />
           <div id="searchSuggestions" class="search-suggestions"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- You Win Modal with Level Transition -->
+    <div id="winModal" class="win-modal">
+      <div id="winModalContent" class="win-modal-content">
+        <h2 class="win-title">You Win!</h2>
+        <p id="winMessage" class="win-message" style="display: none;">Great job!</p>
+        <button id="continueButton" class="continue-button" onclick="continueToNextLevel()">
+          Continue
+        </button>
+      </div>
+    </div>
+
+    <!-- Level Transition Overlay -->
+    <div id="levelTransition" class="level-transition" style="display: none;">
+      <div id="levelTransitionContent" class="level-transition-content">
+        <div id="levelTransitionText" class="level-transition-text"></div>
       </div>
     </div>
 
@@ -658,7 +1127,6 @@
        */
 
       const boardEl = document.querySelector("#gameBoard");
-      const statusEl = document.querySelector("#status");
       const searchModal = document.querySelector("#searchModal");
       const playerSearch = document.querySelector("#playerSearch");
       const searchSuggestions = document.querySelector("#searchSuggestions");
@@ -759,8 +1227,22 @@
         }
       }
 
+      // Debounce function to prevent rapid re-renders
+      let globalRenderDebounceTimer = null;
+      function debouncedRender(delay = 100) {
+        if (globalRenderDebounceTimer) {
+          clearTimeout(globalRenderDebounceTimer);
+        }
+        globalRenderDebounceTimer = setTimeout(() => {
+          render();
+          globalRenderDebounceTimer = null;
+        }, delay);
+      }
+
       // Listen for widget state changes and tool output updates
       function setupWidgetStateListener() {
+        let lastStateGameId = null;
+        
         // Listen for widget state update events (OpenAI Apps SDK pattern)
         window.addEventListener('openai:widget_state_update', (event) => {
           const newState = event.detail?.state;
@@ -768,8 +1250,12 @@
             try {
               const state = typeof newState === 'string' ? JSON.parse(newState) : newState;
               if (state.game) {
+                // Only update if game ID changed (avoid redundant updates)
+                if (!game || state.game.id !== lastStateGameId) {
+                  lastStateGameId = state.game.id;
                 game = state.game;
-                render();
+                  debouncedRender();
+                }
               }
             } catch (e) {
               console.error('Error parsing widget state update:', e);
@@ -781,33 +1267,47 @@
         window.addEventListener('openai:structured_content_update', (event) => {
           const structuredContent = event.detail?.structuredContent;
           if (structuredContent?.game) {
+            // Only update if game ID changed
+            if (!game || structuredContent.game.id !== game.id) {
             game = structuredContent.game;
             // Persist to widget state
             updateWidgetState({ game });
-            render();
+              debouncedRender();
+            }
           }
         });
         
         // Listen for tool output updates (when tools return structured content)
         // This is the primary way tools update widget state
+        let lastGameId = null;
+        let renderDebounceTimer = null;
         const checkToolOutput = () => {
           const structuredContent = window.openai?.toolOutput?.structuredContent;
           if (structuredContent?.game) {
             const newGame = structuredContent.game;
-            // Only update if it's actually different (avoid unnecessary renders)
-            if (!game || newGame.id !== game.id || JSON.stringify(newGame) !== JSON.stringify(game)) {
+            // Only update if game ID changed (avoid expensive JSON.stringify comparison)
+            if (!game || newGame.id !== lastGameId) {
+              lastGameId = newGame.id;
               game = newGame;
               // Persist to widget state for future tool invocations
               updateWidgetState({ game });
+              
+              // Debounce render to avoid rapid re-renders
+              if (renderDebounceTimer) {
+                clearTimeout(renderDebounceTimer);
+              }
+              renderDebounceTimer = setTimeout(() => {
               render();
+                renderDebounceTimer = null;
+              }, 100); // 100ms debounce
             }
           }
         };
         
-        // Check immediately and then periodically (but less frequently than before)
+        // Check immediately and then periodically (reduced frequency for better performance)
         checkToolOutput();
-        // Check every 500ms for tool output updates (tools update this when they complete)
-        const toolOutputInterval = setInterval(checkToolOutput, 500);
+        // Check every 2000ms for tool output updates (reduced from 500ms to reduce lag)
+        const toolOutputInterval = setInterval(checkToolOutput, 2000);
         
         // Clean up interval when page unloads
         window.addEventListener('beforeunload', () => {
@@ -858,6 +1358,10 @@
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '') // Remove accents (é -> e, ê -> e, etc.)
+          // Handle Scandinavian characters
+          .replace(/ø/g, 'o')
+          .replace(/å/g, 'a')
+          .replace(/æ/g, 'ae')
           .replace(/[^a-z0-9\s]/g, '') // Remove special chars except spaces
           .trim();
       }
@@ -935,8 +1439,8 @@
           }
           
           // Method 7: Fuzzy match - check if query characters appear in order in the name
-          // Lower threshold for short queries
-          const minLength = normalizedQuery.length >= 3 ? 3 : normalizedQuery.length;
+          // This handles typos and partial matches like "sorloth" matching "Sørloth"
+          const minLength = normalizedQuery.length >= 2 ? 2 : normalizedQuery.length;
           let queryIndex = 0;
           for (let i = 0; i < normalizedName.length && queryIndex < normalizedQuery.length; i++) {
             if (normalizedName[i] === normalizedQuery[queryIndex]) {
@@ -945,6 +1449,33 @@
           }
           if (queryIndex === normalizedQuery.length && queryIndex >= minLength) {
             matches.push({ player, score: 40 });
+          }
+          
+          // Method 8: Levenshtein-like fuzzy match for common typos
+          // Check if most characters match (allowing for 1-2 character differences)
+          if (normalizedQuery.length >= 4) {
+            let matchingChars = 0;
+            const queryChars = normalizedQuery.split('');
+            const nameChars = normalizedName.split('');
+            
+            // Count matching characters (in order, but allowing gaps)
+            let nameIndex = 0;
+            for (const queryChar of queryChars) {
+              while (nameIndex < nameChars.length) {
+                if (nameChars[nameIndex] === queryChar) {
+                  matchingChars++;
+                  nameIndex++;
+                  break;
+                }
+                nameIndex++;
+              }
+            }
+            
+            // If most characters match (at least 70%), consider it a match
+            const matchRatio = matchingChars / normalizedQuery.length;
+            if (matchRatio >= 0.7 && matchingChars >= 4) {
+              matches.push({ player, score: 30 });
+            }
           }
         }
         
@@ -986,31 +1517,19 @@
       });
 
       function renderSuggestions(query) {
-        const suggestions = searchPlayers(query);
-        searchSuggestions.innerHTML = '';
-        
-        if (suggestions.length === 0 && query.length > 0) {
-          searchSuggestions.innerHTML = '<div class="suggestion-item text-sm text-muted-foreground" style="padding: 12px; color: #666;">No players found</div>';
+        // Don't show anything until user types at least one character
+        if (!query || query.trim().length === 0) {
+          searchSuggestions.innerHTML = '';
           currentSuggestions = [];
           return;
         }
         
-        if (query.length === 0) {
-          // Show some popular players when search is empty
-          const popular = allPlayers.slice(0, 5);
-          currentSuggestions = popular;
-          popular.forEach((player, index) => {
-            const item = document.createElement('div');
-            item.className = 'suggestion-item';
-            item.setAttribute('data-player-index', index.toString());
-            item.innerHTML = `
-              <div>
-                <div class="suggestion-name text-sm font-semibold">${player.Name}</div>
-                <div class="suggestion-details text-xs">${player.Team} • ${player.Country}</div>
-              </div>
-            `;
-            searchSuggestions.appendChild(item);
-          });
+        const suggestions = searchPlayers(query);
+        searchSuggestions.innerHTML = '';
+        
+        if (suggestions.length === 0) {
+          searchSuggestions.innerHTML = '<div class="suggestion-item text-sm text-muted-foreground" style="padding: 12px; color: #666;">No players found</div>';
+          currentSuggestions = [];
           return;
         }
         
@@ -1019,10 +1538,10 @@
           const item = document.createElement('div');
           item.className = 'suggestion-item';
           item.setAttribute('data-player-index', index.toString());
+          // Only show player name, no details
           item.innerHTML = `
             <div>
               <div class="suggestion-name text-sm font-semibold">${player.Name}</div>
-              <div class="suggestion-details text-xs">${player.Team} • ${player.Country}</div>
             </div>
           `;
           searchSuggestions.appendChild(item);
@@ -1363,7 +1882,7 @@
         
         // Check if it's a team (common team names)
         const teamNames = ['FC Barcelona', 'Real Madrid', 'Atletico Madrid', 'Manchester City', 
-                          'Chelsea', 'Liverpool', 'Arsenal', 'Tottenham Hotspur', 'Bayern Munich'];
+                          'Chelsea', 'Liverpool', 'Arsenal', 'Tottenham Hotspur', 'Bayern Munich', 'Manchester United'];
         if (teamNames.some(team => categoryValue.includes(team) || team.includes(categoryValue))) {
           return 'Team';
         }
@@ -1415,15 +1934,16 @@
             'Real Madrid': 'madrid.png',
             'Atletico Madrid': 'atletico.svg',
             'Manchester City': 'mancity.png',
+            'Manchester United': 'united.png',
             'Chelsea': 'Chelsea.png',
             'Liverpool': 'Liverpool_FC.png',
             'Arsenal': 'arsenal.png',
             'Tottenham Hotspur': 'tottenham.png',
-            'Bayern Munich': 'germany.webp' // Using Germany flag as placeholder
+            'Bayern Munich': 'bayern.svg'
           };
           const imageName = teamMap[categoryValue];
           if (imageName) {
-            imagePath = imageDataUris[imageName] || '';
+          imagePath = imageDataUris[imageName] || '';
           }
           // If no team logo found, show text only (never use player silhouette)
           if (!imagePath) {
@@ -1457,7 +1977,7 @@
           };
           const imageName = countryMap[categoryValue];
           if (imageName) {
-            imagePath = imageDataUris[imageName] || '';
+          imagePath = imageDataUris[imageName] || '';
           }
           // If no flag image found, show text only (never use player silhouette)
           if (!imagePath) {
@@ -1474,7 +1994,7 @@
           };
           const imageName = leagueMap[categoryValue];
           if (imageName) {
-            imagePath = imageDataUris[imageName] || '';
+          imagePath = imageDataUris[imageName] || '';
           }
           // If no league logo found, show text only (never use player silhouette)
           if (!imagePath) {
@@ -1491,40 +2011,79 @@
         return { imagePath, text };
       };
 
+      // Render difficulty badge
+      // Render difficulty progress slider
+      const renderDifficultySlider = () => {
+        const sliderContainer = document.querySelector("#difficultySlider");
+        const sliderFill = document.querySelector("#difficultySliderFill");
+        const currentLevelText = document.querySelector("#currentLevelText");
+        const nextLevelText = document.querySelector("#nextLevelText");
+        
+        if (!sliderContainer || !sliderFill || !game) {
+          if (sliderContainer) sliderContainer.style.display = 'none';
+          return;
+        }
+
+        const difficulty = game.difficulty || 'easy';
+        const progress = game.progressToNextLevel || 0;
+        const previousDifficulty = game.previousDifficulty;
+        
+        const difficultyLabels = {
+          easy: 'Easy',
+          medium: 'Medium',
+          hard: 'Hard'
+        };
+
+        const nextLevelLabels = {
+          easy: '→ Medium',
+          medium: '→ Hard',
+          hard: 'Max Level'
+        };
+
+        // Update labels
+        currentLevelText.textContent = difficultyLabels[difficulty];
+        nextLevelText.textContent = nextLevelLabels[difficulty];
+
+        // Update slider fill with smooth transition
+        sliderFill.className = `difficulty-slider-fill ${difficulty}`;
+        
+        // Check if difficulty changed (for transition)
+        if (previousDifficulty && previousDifficulty !== difficulty) {
+          // Reset progress and animate
+          sliderFill.style.width = '0%';
+          setTimeout(() => {
+            sliderFill.style.width = `${progress}%`;
+          }, 100);
+        } else {
+          // Smooth update to new progress value
+          sliderFill.style.width = `${progress}%`;
+        }
+
+        // Debug logging (can be removed later)
+        console.log(`Progress: ${progress}% (Difficulty: ${difficulty})`);
+
+        sliderContainer.style.display = 'block';
+      };
+
       const render = () => {
         if (!game) {
           boardEl.innerHTML = "";
-          statusEl.textContent = "No game loaded";
-          statusEl.className = "status waiting text-base font-semibold";
           previousMarks.clear();
+          const sliderContainer = document.querySelector("#difficultySlider");
+          if (sliderContainer) sliderContainer.style.display = 'none';
           return;
         }
+
+        // Render difficulty progress slider
+        renderDifficultySlider();
 
         // Game rendering (debug logs removed for cleaner console)
 
         boardEl.innerHTML = "";
 
-        // Update status (preserve Tailwind typography classes)
-        if (game.isComplete) {
-          if (game.winner === "user") {
-            statusEl.textContent = "🎉 You win!";
-            statusEl.className = "status winner text-base font-semibold";
-          } else if (game.winner === "ai") {
-            statusEl.textContent = "😔 AI wins!";
-            statusEl.className = "status winner text-base font-semibold";
-          } else {
-            statusEl.textContent = "🤝 Draw!";
-            statusEl.className = "status draw text-base font-semibold";
-          }
-        } else {
-          if (game.currentTurn === 'user') {
-            statusEl.textContent = "Click a cell to guess the player!";
-            document.getElementById('skipButton').style.display = 'block';
-          } else {
-            statusEl.textContent = "AI is thinking...";
-            document.getElementById('skipButton').style.display = 'none';
-          }
-          statusEl.className = "status waiting text-base font-semibold";
+        // Handle game completion - show win modal for user wins
+        if (game.isComplete && game.winner === "user") {
+          showWinModal(game);
         }
 
         // Render 4x4 grid
@@ -1535,12 +2094,42 @@
           for (let col = 0; col < 4; col++) {
             const cell = game.grid[row][col];
             
-            // Top-left corner (row 0, col 0) - empty
+            // Top-left corner (row 0, col 0) - Logo
             if (row === 0 && col === 0) {
               const cornerCell = document.createElement("div");
               cornerCell.className = "category-cell";
+              cornerCell.style.position = 'relative';
+              cornerCell.style.overflow = 'hidden';
+              cornerCell.style.padding = '0';
+              cornerCell.style.setProperty('background-color', '#f3f4f6', 'important');
+              cornerCell.style.setProperty('border', '0', 'important');
+              cornerCell.style.setProperty('outline', '0', 'important');
+              cornerCell.style.setProperty('box-shadow', 'none', 'important');
+              
+              // Load logo from data URIs
+              const imageDataUris = window.IMAGE_DATA_URIS || {};
+              const logoPath = imageDataUris['Logo.png'] || '';
+              
+              if (logoPath) {
+                // Create Gray 100 background div
+                const grayBg = document.createElement('div');
+                grayBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:#f3f4f6;z-index:0;';
+                cornerCell.appendChild(grayBg);
+                
+                // Create img element to fill the entire cell
+                const img = document.createElement('img');
+                img.src = logoPath;
+                img.alt = 'Tic Tac Soccer Logo';
+                // Logo fills entire cell
+                img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:center;z-index:1;position:absolute;top:0;left:0;border:0;outline:0;';
+                
+                cornerCell.appendChild(img);
+              } else {
+                // Fallback if logo not found
               cornerCell.style.background = "#e0e0e0";
               cornerCell.style.color = "#666";
+              }
+              
               boardEl.appendChild(cornerCell);
             }
             // Top row (row 0) - Column category VALUES
@@ -1564,8 +2153,8 @@
                 categoryCell.style.position = 'relative';
                 categoryCell.style.overflow = 'hidden';
                 categoryCell.style.padding = '0';
-                // Set white background on the cell itself FIRST
-                categoryCell.style.setProperty('background-color', 'white', 'important');
+                // Set Gray 100 background on the cell itself FIRST
+                categoryCell.style.setProperty('background-color', '#f3f4f6', 'important');
                 
                 // Force remove ALL borders using setProperty with !important
                 categoryCell.style.setProperty('border', '0', 'important');
@@ -1581,16 +2170,23 @@
                 // Use img element with white background div - more reliable than CSS background
                 const fullImagePath = imagePath;
                 if (fullImagePath) {
-                  // Create white background div
-                  const whiteBg = document.createElement('div');
-                  whiteBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:white;z-index:0;';
-                  categoryCell.appendChild(whiteBg);
+                  // Create Gray 100 background div
+                  const grayBg = document.createElement('div');
+                  grayBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:#f3f4f6;z-index:0;';
+                  categoryCell.appendChild(grayBg);
                   
                   // Create img on top - calculate size to fit within cell
                   const img = document.createElement('img');
                   img.src = fullImagePath;
                   img.alt = categoryValue;
-                  img.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;object-position:center;z-index:1;border:0;outline:0;';
+                  // For Position categories (not Goalkeeper), move image up slightly to avoid text overlap
+                  const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                  const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
+                  // Soccer_Player.png is used for Forward, Midfielder, Defender - make it 27% smaller
+                  const isSoccerPlayer = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                  const initialMaxSize = isSoccerPlayer ? '73%' : '80%';
+                  // Set initial max size to prevent oversized images before onload
+                  img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};`;
                   
                   // Calculate proper size when image loads
                   img.onload = function() {
@@ -1599,9 +2195,18 @@
                     const imgWidth = img.naturalWidth;
                     const imgHeight = img.naturalHeight;
                     
-                    // Calculate scale to fit with 10% padding
-                    const maxWidth = cellWidth * 0.9;
-                    const maxHeight = cellHeight * 0.9;
+                    // Soccer_Player.png is used for Forward, Midfielder, Defender - make it 27% smaller
+                    const isSoccerPlayer = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                    // England flag tends to render visually smaller - boost its size ~20%
+                    const isEnglandFlag = categoryType === 'Country' && categoryValue === 'ENG';
+                    let sizeMultiplier = 0.8; // default: 20% smaller than cell
+                    if (isSoccerPlayer) {
+                      sizeMultiplier = 0.73; // 27% smaller
+                    } else if (isEnglandFlag) {
+                      sizeMultiplier = 0.96; // ~120% of the default logo size
+                    }
+                    const maxWidth = cellWidth * sizeMultiplier;
+                    const maxHeight = cellHeight * sizeMultiplier;
                     const widthRatio = maxWidth / imgWidth;
                     const heightRatio = maxHeight / imgHeight;
                     const scale = Math.min(widthRatio, heightRatio);
@@ -1609,6 +2214,12 @@
                     // Apply calculated dimensions
                     img.style.width = (imgWidth * scale) + 'px';
                     img.style.height = (imgHeight * scale) + 'px';
+                    img.style.maxWidth = 'none';
+                    img.style.maxHeight = 'none';
+                    // Preserve the transform positioning (moved up for Position categories)
+                    const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                    const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
+                    img.style.transform = imageTransform;
                   };
                   
                   categoryCell.appendChild(img);
@@ -1624,21 +2235,30 @@
                   categoryCell.style.alignItems = 'center';
                   categoryCell.style.justifyContent = 'center';
                   categoryCell.textContent = categoryValue;
-                  categoryCell.style.color = 'white';
+                  categoryCell.style.color = '#000000'; /* Black 900 */
                   categoryCell.style.padding = '12px';
                 }
                 
-                // ALWAYS show text overlay for Position and Shirt Number categories (even when image is present)
+                // Show text overlay for Position and Shirt Number categories
                 // For other categories, only show text if no image is available
-                if ((categoryType === 'Position' || categoryType === 'Shirt Number') && text) {
+                if (categoryType === 'Shirt Number' && text) {
+                  // Shirt Number: centered on shirt, large white text
                   const textOverlay = document.createElement("div");
-                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white text-4xl font-bold z-10';
+                  textOverlay.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8), -2px -2px 4px rgba(0,0,0,0.8)';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                } else if (categoryType === 'Position' && text) {
+                  // Position: bottom of grid, same color as grid background (Gray 100)
+                  // All position text at same position (same as Goalkeeper)
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-0 left-0 right-0 bg-[#f3f4f6] text-black px-2 py-1 rounded-b text-xs font-bold z-10 text-center';
                   textOverlay.textContent = text;
                   categoryCell.appendChild(textOverlay);
                 } else if (text && !fullImagePath) {
                   // For non-Position/Shirt Number categories, show text only if no image
                   const textOverlay = document.createElement("div");
-                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-white/90 text-black px-2 py-0.5 rounded text-xs font-bold z-10';
                   textOverlay.textContent = text;
                   categoryCell.appendChild(textOverlay);
                 }
@@ -1675,8 +2295,8 @@
                 categoryCell.style.position = 'relative';
                 categoryCell.style.overflow = 'hidden';
                 categoryCell.style.padding = '0';
-                // Set white background on the cell itself FIRST
-                categoryCell.style.setProperty('background-color', 'white', 'important');
+                // Set Gray 100 background on the cell itself FIRST
+                categoryCell.style.setProperty('background-color', '#f3f4f6', 'important');
                 
                 // Force remove ALL borders using setProperty with !important
                 categoryCell.style.setProperty('border', '0', 'important');
@@ -1692,16 +2312,23 @@
                 // Use img element with white background div - more reliable than CSS background
                 const fullImagePath = imagePath;
                 if (fullImagePath) {
-                  // Create white background div
-                  const whiteBg = document.createElement('div');
-                  whiteBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:white;z-index:0;';
-                  categoryCell.appendChild(whiteBg);
+                  // Create Gray 100 background div
+                  const grayBg = document.createElement('div');
+                  grayBg.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background-color:#f3f4f6;z-index:0;';
+                  categoryCell.appendChild(grayBg);
                   
                   // Create img on top - calculate size to fit within cell
                   const img = document.createElement('img');
                   img.src = fullImagePath;
                   img.alt = categoryValue;
-                  img.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);object-fit:contain;object-position:center;z-index:1;border:0;outline:0;';
+                  // For Position categories (not Goalkeeper), move image up slightly to avoid text overlap
+                  const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                  const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
+                  // Soccer_Player.png is used for Forward, Midfielder, Defender - make it 27% smaller
+                  const isSoccerPlayer = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                  const initialMaxSize = isSoccerPlayer ? '73%' : '80%';
+                  // Set initial max size to prevent oversized images before onload
+                  img.style.cssText = `position:absolute;top:50%;left:50%;transform:${imageTransform};object-fit:contain;object-position:center;z-index:1;border:0;outline:0;max-width:${initialMaxSize};max-height:${initialMaxSize};`;
                   
                   // Calculate proper size when image loads
                   img.onload = function() {
@@ -1710,9 +2337,18 @@
                     const imgWidth = img.naturalWidth;
                     const imgHeight = img.naturalHeight;
                     
-                    // Calculate scale to fit with 10% padding
-                    const maxWidth = cellWidth * 0.9;
-                    const maxHeight = cellHeight * 0.9;
+                    // Soccer_Player.png is used for Forward, Midfielder, Defender - make it 27% smaller
+                    const isSoccerPlayer = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                    // England flag tends to render visually smaller - boost its size ~20%
+                    const isEnglandFlag = categoryType === 'Country' && categoryValue === 'ENG';
+                    let sizeMultiplier = 0.8; // default: 20% smaller than cell
+                    if (isSoccerPlayer) {
+                      sizeMultiplier = 0.73; // 27% smaller
+                    } else if (isEnglandFlag) {
+                      sizeMultiplier = 0.96; // ~120% of the default logo size
+                    }
+                    const maxWidth = cellWidth * sizeMultiplier;
+                    const maxHeight = cellHeight * sizeMultiplier;
                     const widthRatio = maxWidth / imgWidth;
                     const heightRatio = maxHeight / imgHeight;
                     const scale = Math.min(widthRatio, heightRatio);
@@ -1720,6 +2356,12 @@
                     // Apply calculated dimensions
                     img.style.width = (imgWidth * scale) + 'px';
                     img.style.height = (imgHeight * scale) + 'px';
+                    img.style.maxWidth = 'none';
+                    img.style.maxHeight = 'none';
+                    // Preserve the transform positioning (moved up for Position categories)
+                    const isPosition = categoryType === 'Position' && categoryValue !== 'Keeper' && categoryValue !== 'GK' && categoryValue !== 'Goalkeeper';
+                    const imageTransform = isPosition ? 'translate(-50%, -58%)' : 'translate(-50%, -50%)';
+                    img.style.transform = imageTransform;
                   };
                   
                   categoryCell.appendChild(img);
@@ -1735,21 +2377,30 @@
                   categoryCell.style.alignItems = 'center';
                   categoryCell.style.justifyContent = 'center';
                   categoryCell.textContent = categoryValue;
-                  categoryCell.style.color = 'white';
+                  categoryCell.style.color = '#000000'; /* Black 900 */
                   categoryCell.style.padding = '12px';
                 }
                 
-                // ALWAYS show text overlay for Position and Shirt Number categories (even when image is present)
+                // Show text overlay for Position and Shirt Number categories
                 // For other categories, only show text if no image is available
-                if ((categoryType === 'Position' || categoryType === 'Shirt Number') && text) {
+                if (categoryType === 'Shirt Number' && text) {
+                  // Shirt Number: centered on shirt, large white text
                   const textOverlay = document.createElement("div");
-                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white text-4xl font-bold z-10';
+                  textOverlay.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8), -2px -2px 4px rgba(0,0,0,0.8)';
+                  textOverlay.textContent = text;
+                  categoryCell.appendChild(textOverlay);
+                } else if (categoryType === 'Position' && text) {
+                  // Position: bottom of grid, same color as grid background (Gray 100)
+                  // All position text at same position (same as Goalkeeper)
+                  const textOverlay = document.createElement("div");
+                  textOverlay.className = 'absolute bottom-0 left-0 right-0 bg-[#f3f4f6] text-black px-2 py-1 rounded-b text-xs font-bold z-10 text-center';
                   textOverlay.textContent = text;
                   categoryCell.appendChild(textOverlay);
                 } else if (text && !fullImagePath) {
                   // For non-Position/Shirt Number categories, show text only if no image
                   const textOverlay = document.createElement("div");
-                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-black/70 text-white px-2 py-0.5 rounded text-xs font-bold z-10';
+                  textOverlay.className = 'absolute bottom-[5px] left-1/2 -translate-x-1/2 bg-white/90 text-black px-2 py-0.5 rounded text-xs font-bold z-10';
                   textOverlay.textContent = text;
                   categoryCell.appendChild(textOverlay);
                 }
@@ -1872,23 +2523,207 @@
         }
       }
 
+      // Show win modal with grow animation
+      function showWinModal(game) {
+        const winModal = document.querySelector("#winModal");
+        const winMessage = document.querySelector("#winMessage");
+        const continueButton = document.querySelector("#continueButton");
+        const currentDifficulty = game.difficulty || 'easy';
+        
+        // Check if we can progress to next level
+        const canProgress = currentDifficulty === 'easy' || currentDifficulty === 'medium';
+        
+        if (canProgress) {
+          continueButton.textContent = "Next Level";
+          continueButton.style.display = 'block';
+        } else {
+          continueButton.textContent = "Play Again";
+          continueButton.style.display = 'block';
+        }
+        
+        winModal.classList.add('active');
+      }
+
+      // Continue to next level with continuous transitions
+      async function continueToNextLevel() {
+        if (!game) return;
+        
+        // Close win modal
+        const winModal = document.querySelector("#winModal");
+        winModal.classList.remove('active');
+        
+        // Check if we should progress difficulty by creating a new game
+        // The server will automatically progress if conditions are met
+        try {
+          const baseUrl = window.MCP_SERVER_URL || window.location.origin;
+          const mcpUrl = `${baseUrl}/mcp`;
+          
+          // Create new game (server handles difficulty progression)
+          const response = await fetch(mcpUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'tools/call',
+              params: {
+                name: 'create_game',
+                arguments: {}
+              },
+              id: Date.now()
+            })
+          });
+          
+          const data = await response.json();
+          
+          // Extract game from response
+          let gameData = null;
+          if (data.result?.structuredContent?.game) {
+            gameData = data.result.structuredContent.game;
+          } else if (data.result?.content && Array.isArray(data.result.content)) {
+            for (const item of data.result.content) {
+              if (item.structuredContent?.game) {
+                gameData = item.structuredContent.game;
+                break;
+              }
+            }
+          }
+          
+          if (gameData) {
+            const newDifficulty = gameData.difficulty || 'easy';
+            const previousDifficulty = gameData.previousDifficulty;
+            
+            // Check if difficulty changed (for transition)
+            if (previousDifficulty && previousDifficulty !== newDifficulty) {
+              // Show level transition overlay with continuous transition
+              const levelTransition = document.querySelector("#levelTransition");
+              const levelTransitionText = document.querySelector("#levelTransitionText");
+              
+              const levelLabels = {
+                easy: 'Easy',
+                medium: 'Medium',
+                hard: 'Hard'
+              };
+              
+              levelTransitionText.textContent = levelLabels[newDifficulty];
+              levelTransitionText.className = `level-transition-text ${newDifficulty}`;
+              levelTransition.style.display = 'flex';
+              
+              // Wait for transition animation, then update game
+              setTimeout(() => {
+                // Hide transition overlay
+                levelTransition.style.display = 'none';
+                
+                // Update game state
+                game = gameData;
+                updateWidgetState({ game });
+                render();
+              }, 2000); // Wait 2 seconds for transition animation
+            } else {
+              // No level change, just create new game
+              game = gameData;
+              updateWidgetState({ game });
+              render();
+            }
+          } else {
+            console.error('Failed to create new game');
+          }
+        } catch (error) {
+          console.error('Error creating new game:', error);
+        }
+      }
+
       // Make functions available globally
       window.closeSearch = closeSearch;
       window.skipTurn = skipTurn;
+      window.continueToNextLevel = continueToNextLevel;
+
+      let imageHydrateInterval = null;
+
+      function scheduleImageHydrate() {
+        if (imageHydrateInterval) return;
+        let attempts = 0;
+        imageHydrateInterval = setInterval(() => {
+          const imageDataUris = window.IMAGE_DATA_URIS;
+          const hasImages = imageDataUris && Object.keys(imageDataUris).length > 0;
+          if (hasImages) {
+            if (game) {
+              // Re-render so axis categories pick up newly available logos
+              render();
+            }
+            clearInterval(imageHydrateInterval);
+            imageHydrateInterval = null;
+          } else if (++attempts >= 12) {
+            // Give up after ~3.6s
+            clearInterval(imageHydrateInterval);
+            imageHydrateInterval = null;
+          }
+        }, 300);
+      }
 
       // Initialize widget on load
       function initialize() {
-        // Set stadium background image from data URI
+        // Set soccer pitch background image from data URI
         const imageDataUris = window.IMAGE_DATA_URIS || {};
-        const stadiumBg = imageDataUris['stadium-background.jpg'];
-        if (stadiumBg) {
+        const pitchBg = imageDataUris['soccer_pitch.png'];
+        if (pitchBg) {
           const style = document.createElement('style');
           style.textContent = `
             body::before {
-              background-image: url('${stadiumBg}');
+              background-image: url('${pitchBg}');
             }
           `;
           document.head.appendChild(style);
+        }
+
+        // Populate intro teams grid with logos (using same team->image map as categories)
+        const introTeams = document.querySelectorAll(".intro-team");
+        if (introTeams.length && imageDataUris) {
+          const teamLogoMap = {
+            'FC Barcelona': 'barca.png',
+            'Real Madrid': 'madrid.png',
+            'Atletico Madrid': 'atletico.svg',
+            'Manchester City': 'mancity.png',
+            'Manchester United': 'united.png',
+            'Chelsea': 'Chelsea.png',
+            'Liverpool': 'Liverpool_FC.png',
+            'Arsenal': 'arsenal.png',
+            'Tottenham Hotspur': 'tottenham.png',
+            'Bayern Munich': 'bayern.svg'
+          };
+
+          introTeams.forEach((slot) => {
+            const teamName = slot.getAttribute("data-team");
+            const imageName = teamLogoMap[teamName];
+            const uri = imageName ? imageDataUris[imageName] : null;
+            if (uri) {
+              const img = document.createElement("img");
+              img.src = uri;
+              img.alt = teamName || "Team logo";
+              slot.appendChild(img);
+            } else if (teamName) {
+              slot.textContent = teamName;
+            }
+          });
+        }
+
+        // Handle transition from intro screen to main game (Apps SDK UI animateLayout-style transition)
+        const introScreen = document.getElementById("introScreen");
+        const mainGame = document.getElementById("mainGame");
+        const startGameButton = document.getElementById("startGameButton");
+        if (introScreen && mainGame && startGameButton) {
+          startGameButton.addEventListener("click", () => {
+            introScreen.classList.add("hidden");
+            // After the fade/slide animation, hide intro and show main game
+            setTimeout(() => {
+              introScreen.style.display = "none";
+              mainGame.style.display = "block";
+              // Ensure we have images loaded for axes; if they arrive slightly later,
+              // schedule a re-render once data URIs are available.
+              scheduleImageHydrate();
+            }, 250);
+          });
         }
         
         // Request fullscreen display mode for the game

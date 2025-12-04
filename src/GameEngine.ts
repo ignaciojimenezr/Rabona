@@ -23,6 +23,9 @@ export interface Game {
   winner: 'user' | 'ai' | 'draw' | null;
   isComplete: boolean;
   size: number; // 4 for 4x4 grid
+  difficulty: 'easy' | 'medium' | 'hard'; // Current difficulty level
+  previousDifficulty?: 'easy' | 'medium' | 'hard'; // Previous difficulty (for transitions)
+  progressToNextLevel?: number; // Progress percentage (0-100) toward next difficulty level
   createdAt: Date;
 }
 
@@ -34,7 +37,8 @@ export class GameEngine {
   private squadStore: SquadStore;
   private recentPlayers: string[] = []; // FIFO queue of recently used player IDs (Name + Team for uniqueness) - resets on loss
   private recentCombinations: string[] = []; // FIFO queue of recently used player combinations (rowCategory|columnCategory|playerId) - hardcoded limit
-  private currentDifficulty: 'easy' | 'medium' | 'hard' = 'easy';
+  private currentDifficulty: 'easy' | 'medium' | 'hard' = 'easy'; // Track difficulty across games - progresses on wins
+  private lastGameDifficulty: 'easy' | 'medium' | 'hard' | null = null; // Track last game's difficulty for transitions
   private lastGameWinner: 'user' | 'ai' | 'draw' | null = null; // Track last game result to reset players on loss
   private readonly MAX_RECENT_COMBINATIONS = 15; // Hardcoded: Track last 15 combinations to avoid same 3-player groups
 
@@ -245,29 +249,131 @@ export class GameEngine {
     return { best, good, okay, fallback };
   }
 
+  // Removed getCurrentDifficulty - each game is independent, always starts at easy
+
   /**
-   * Get the current difficulty level, automatically progressing if needed
+   * Calculate progress toward next difficulty level (0-100)
+   * Based on how many players are available for current difficulty
+   * Progress is based on games won, not just players used
    */
-  private getCurrentDifficulty(): 'easy' | 'medium' | 'hard' {
-    // Simple progression - can be enhanced later if needed
-    return this.currentDifficulty;
+  private calculateProgressToNextLevel(): number {
+    const allPlayers = this.squadStore.getAll();
+    
+    if (this.currentDifficulty === 'easy') {
+      // Progress based on Priority 1 players used
+      // Each game uses 3-9 Priority 1 players (depending on category matches)
+      // We need to exhaust Priority 1 players to progress to Medium
+      const priority1Players = allPlayers.filter(p => this.getPlayerPriority(p) === 1);
+      const totalPriority1 = priority1Players.length;
+      const availablePriority1 = priority1Players.filter(p => !this.isPlayerRecentlyUsed(p));
+      const usedPriority1 = totalPriority1 - availablePriority1.length;
+      
+      // Need at least 3 Priority 1 players for a game
+      // Progress is based on how close we are to running out (need to keep at least 3)
+      const minRequired = 3;
+      const maxUsable = Math.max(0, totalPriority1 - minRequired);
+      
+      if (maxUsable === 0) return 100; // Already at threshold
+      if (usedPriority1 >= maxUsable) return 100; // All usable players used
+      
+      // Calculate progress: how many players we've used out of the usable pool
+      const progress = Math.min(100, Math.round((usedPriority1 / maxUsable) * 100));
+      return progress;
+    } else if (this.currentDifficulty === 'medium') {
+      // Progress based on Priority 2 players used
+      // Each game uses at least 1 Priority 2 player
+      // We need to exhaust Priority 2 players to progress to Hard
+      const priority2Players = allPlayers.filter(p => this.getPlayerPriority(p) === 2);
+      const totalPriority2 = priority2Players.length;
+      const availablePriority2 = priority2Players.filter(p => !this.isPlayerRecentlyUsed(p));
+      const usedPriority2 = totalPriority2 - availablePriority2.length;
+      
+      // Need at least 1 Priority 2 player for a game
+      const minRequired = 1;
+      const maxUsable = Math.max(0, totalPriority2 - minRequired);
+      
+      if (maxUsable === 0) return 100; // Already at threshold
+      if (usedPriority2 >= maxUsable) return 100; // All usable players used
+      
+      // Calculate progress: how many players we've used out of the usable pool
+      const progress = Math.min(100, Math.round((usedPriority2 / maxUsable) * 100));
+      return progress;
+    }
+    
+    return 100; // Hard is max, always at 100%
+  }
+
+  /**
+   * Check if we should progress to next difficulty level
+   * Progresses when: user wins AND runs out of players for current difficulty
+   */
+  private shouldProgressDifficulty(): boolean {
+    if (this.lastGameWinner !== 'user') {
+      return false; // Only progress on user wins
+    }
+
+    // Check if we've run out of Priority 1 players (for Easy -> Medium)
+    if (this.currentDifficulty === 'easy') {
+      const allPlayers = this.squadStore.getAll();
+      const priority1Players = allPlayers.filter(p => this.getPlayerPriority(p) === 1);
+      const availablePriority1 = priority1Players.filter(p => !this.isPlayerRecentlyUsed(p));
+      return availablePriority1.length < 3; // Need at least 3 for a game
+    }
+
+    // Check if we've run out of Priority 2 players (for Medium -> Hard)
+    if (this.currentDifficulty === 'medium') {
+      const allPlayers = this.squadStore.getAll();
+      const priority2Players = allPlayers.filter(p => this.getPlayerPriority(p) === 2);
+      const availablePriority2 = priority2Players.filter(p => !this.isPlayerRecentlyUsed(p));
+      return availablePriority2.length < 1; // Need at least 1 for a game
+    }
+
+    return false; // Hard is max difficulty
+  }
+
+  /**
+   * Progress to next difficulty level
+   */
+  private progressDifficulty(): void {
+    if (this.currentDifficulty === 'easy') {
+      this.currentDifficulty = 'medium';
+    } else if (this.currentDifficulty === 'medium') {
+      this.currentDifficulty = 'hard';
+    }
+    // Hard is max, no further progression
   }
 
   /**
    * Generate a new 4x4 tic-tac-toe game
-   * Uses progressive difficulty: starts with easy, progresses to medium, then hard
-   * Randomizes order within each difficulty level
-   * @param difficulty - Optional override, otherwise uses progressive difficulty
-   *   - Easy: At least 3 players with Priority 1 (famous)
+   * Difficulty progresses based on wins: Easy -> Medium -> Hard
+   * @param difficulty - Optional override (defaults to current difficulty)
+   *   - Easy: At least 3 players with Priority 1 (famous) - STRICT: only Priority 1 allowed
    *   - Medium: At least 2 players with Priority 1 + at least 1 with Priority 2
    *   - Hard: At least 1 player from each priority tier (P1, P2, P3) and total ≥ 6
    */
   generateGame(difficulty?: 'easy' | 'medium' | 'hard'): Game {
-    // Reset recent players queue for every new game (allows reuse but still tries new players)
-    this.resetRecentPlayers();
+    // Reset progress and recent players on loss
+    if (this.lastGameWinner === 'ai' || this.lastGameWinner === 'draw') {
+      // Reset recent players on loss to allow reuse
+      this.resetRecentPlayers();
+    }
     
-    // Use progressive difficulty if not specified
-    const gameDifficulty = difficulty || this.getCurrentDifficulty();
+    // Check if we should progress difficulty after last win (before resetting)
+    if (this.shouldProgressDifficulty()) {
+      this.progressDifficulty();
+      // Reset recent players after progressing to allow new players at new level
+      this.resetRecentPlayers();
+    }
+    
+    // Use specified difficulty or current difficulty
+    // If no difficulty specified and this is first game, start at 'easy'
+    const gameDifficulty = difficulty || this.currentDifficulty || 'easy';
+    
+    // Track previous difficulty for transitions (only if it changed)
+    const previousDifficulty = this.lastGameDifficulty && this.lastGameDifficulty !== gameDifficulty 
+      ? this.lastGameDifficulty 
+      : undefined;
+    this.lastGameDifficulty = gameDifficulty;
     const allPlayers = this.squadStore.getAll();
     if (allPlayers.length < 9) {
       throw new Error('Not enough players. Need at least 9 players.');
@@ -600,19 +706,9 @@ export class GameEngine {
       }
     }
 
-    // If we still couldn't find a combination, check if we should progress difficulty
+    // If we still couldn't find a combination, use fallback (don't auto-progress difficulty)
+    // Each game is independent - if we can't find valid combinations, use fallback values
     if (!foundValidCombination && attempts >= maxAttempts) {
-      // Try to progress to next difficulty
-      if (gameDifficulty === 'easy' && this.currentDifficulty === 'easy') {
-        this.currentDifficulty = 'medium';
-        // Retry with medium
-        return this.generateGame('medium');
-      } else if (gameDifficulty === 'medium' && this.currentDifficulty === 'medium') {
-        this.currentDifficulty = 'hard';
-        // Retry with hard
-        return this.generateGame('hard');
-      }
-      // If we're already at hard or explicitly requested a difficulty, use fallback
       // Reset to use the last attempted combination
       if (finalRowCategoryTypes.length === 0) {
         // Fallback: regenerate types one more time
@@ -791,9 +887,15 @@ export class GameEngine {
         const columnCategoryValue = columnCategoryValues[col];
         const columnCategoryType = columnCategoryTypes[col];
 
+        // Create a Set of already-selected player IDs to prevent duplicates
+        const selectedPlayerIds = new Set(selectedPlayers.map(p => this.getPlayerId(p)));
+
         // Find players matching both categories (use checkMatchDual for proper position matching)
+        // Exclude players that have already been selected
         const matchingPlayers = allPlayers.filter(p => {
-          return this.checkMatchDual(p, rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue);
+          const matchesCategories = this.checkMatchDual(p, rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue);
+          const notAlreadySelected = !selectedPlayerIds.has(this.getPlayerId(p));
+          return matchesCategories && notAlreadySelected;
         });
 
         if (matchingPlayers.length > 0) {
@@ -824,9 +926,10 @@ export class GameEngine {
           
           // Select based on difficulty requirements, with preference order: best > good > okay > fallback
           if (difficulty === 'easy') {
-            // Prefer Priority 1, but ensure we have at least 3 total
-            if (priority1Count < 3 || Math.random() > 0.3) {
-              // Try best first, then good, then okay, then fallback
+            // STRICT Easy mode: Only Priority 1 players allowed
+            // Must have at least 3 Priority 1 players total
+            if (priority1Count < 3) {
+              // Try to get Priority 1 players first (best > good > okay > fallback)
               if (bestFamous.length > 0) {
                 selectedPlayer = this.shuffle([...bestFamous])[0];
                 priority1Count++;
@@ -839,25 +942,47 @@ export class GameEngine {
               } else if (fallbackFamous.length > 0) {
                 selectedPlayer = this.shuffle([...fallbackFamous])[0];
                 priority1Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else if (okay.length > 0) {
-                selectedPlayer = this.shuffle([...okay])[0];
               } else {
-                selectedPlayer = this.shuffle([...fallback])[0];
+                // No Priority 1 players available - this shouldn't happen in Easy mode
+                // But if it does, we'll use the best available (but this indicates a problem)
+                console.warn('Easy mode: No Priority 1 players available, using fallback');
+                if (best.length > 0) {
+                  selectedPlayer = this.shuffle([...best])[0];
+                } else if (good.length > 0) {
+                  selectedPlayer = this.shuffle([...good])[0];
+                } else if (okay.length > 0) {
+                  selectedPlayer = this.shuffle([...okay])[0];
+                } else {
+                  selectedPlayer = this.shuffle([...fallback])[0];
+                }
               }
             } else {
-              // Prefer best players (not recently used, not in recent combinations)
-              if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else if (okay.length > 0) {
-                selectedPlayer = this.shuffle([...okay])[0];
+              // Already have 3 Priority 1 players, but continue preferring Priority 1
+              // Prefer Priority 1 players (best > good > okay > fallback)
+              if (bestFamous.length > 0) {
+                selectedPlayer = this.shuffle([...bestFamous])[0];
+                priority1Count++;
+              } else if (goodFamous.length > 0) {
+                selectedPlayer = this.shuffle([...goodFamous])[0];
+                priority1Count++;
+              } else if (okayFamous.length > 0) {
+                selectedPlayer = this.shuffle([...okayFamous])[0];
+                priority1Count++;
+              } else if (fallbackFamous.length > 0) {
+                selectedPlayer = this.shuffle([...fallbackFamous])[0];
+                priority1Count++;
               } else {
-                selectedPlayer = this.shuffle([...fallback])[0];
+                // No more Priority 1 available - use best non-famous (but this shouldn't happen often)
+                console.warn('Easy mode: No more Priority 1 players, using best available');
+                if (best.length > 0) {
+                  selectedPlayer = this.shuffle([...best])[0];
+                } else if (good.length > 0) {
+                  selectedPlayer = this.shuffle([...good])[0];
+                } else if (okay.length > 0) {
+                  selectedPlayer = this.shuffle([...okay])[0];
+                } else {
+                  selectedPlayer = this.shuffle([...fallback])[0];
+                }
               }
             }
           } else if (difficulty === 'medium') {
@@ -1000,19 +1125,29 @@ export class GameEngine {
             }
           }
           
-          selectedPlayers.push(selectedPlayer);
-          selectedPlayerCombinations.push({
-            player: selectedPlayer,
-            rowCategoryType,
-            rowCategoryValue,
-            columnCategoryType,
-            columnCategoryValue,
-          });
-          rowCells.push({
-            player: selectedPlayer,
-            category: null,
-            mark: null,
-          });
+          // Only add player if one was selected (should always be the case if matchingPlayers.length > 0)
+          if (selectedPlayer) {
+            selectedPlayers.push(selectedPlayer);
+            selectedPlayerCombinations.push({
+              player: selectedPlayer,
+              rowCategoryType,
+              rowCategoryValue,
+              columnCategoryType,
+              columnCategoryValue,
+            });
+            rowCells.push({
+              player: selectedPlayer,
+              category: null,
+              mark: null,
+            });
+          } else {
+            // This shouldn't happen, but handle gracefully if all matching players were already selected
+            rowCells.push({
+              player: null,
+              category: null,
+              mark: null,
+            });
+          }
         } else {
           // No match - this should be rare if we selected good categories
           rowCells.push({
@@ -1040,6 +1175,9 @@ export class GameEngine {
       );
     }
 
+    // Calculate progress toward next level
+    const progressToNextLevel = this.calculateProgressToNextLevel();
+
     return {
       id: `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       grid,
@@ -1051,6 +1189,9 @@ export class GameEngine {
       winner: null,
       isComplete: false,
       size: 4,
+      difficulty: gameDifficulty,
+      previousDifficulty: previousDifficulty || undefined,
+      progressToNextLevel,
       createdAt: new Date(),
     };
   }
@@ -1574,12 +1715,19 @@ export class GameEngine {
     const winner = this.checkWinner(game);
     
     if (winner) {
-      // Track the game result for resetting players on loss
+      // Track the game result for difficulty progression
       this.lastGameWinner = winner;
+      
+      // Reset progress on loss
+      const progressToNextLevel = winner === 'user' 
+        ? this.calculateProgressToNextLevel() 
+        : 0; // Reset to 0 on loss
+      
       return {
         ...game,
         winner,
         isComplete: true,
+        progressToNextLevel,
       };
     }
 
@@ -1589,16 +1737,26 @@ export class GameEngine {
     );
 
     if (allFilled) {
-      // Track the game result for resetting players on loss
+      // Track the game result for difficulty progression
       this.lastGameWinner = 'draw';
+      
+      // Reset progress on draw (treat as loss)
+      const progressToNextLevel = 0;
+      
       return {
         ...game,
         isComplete: true,
         winner: 'draw',
+        progressToNextLevel,
       };
     }
 
-    return game;
+    // Update progress for ongoing game
+    const progressToNextLevel = this.calculateProgressToNextLevel();
+    return {
+      ...game,
+      progressToNextLevel,
+    };
   }
 
   /**

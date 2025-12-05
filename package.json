@@ -5,8 +5,10 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/mcp-server.ts",
+    "build": "npm run bundle-data && tsc",
+    "bundle-data": "node scripts/bundle-data.js",
+    "dev": "npm run bundle-data && wrangler dev",
+    "deploy": "npm run bundle-data && wrangler deploy",
     "start": "node dist/mcp-server.js",
     "type-check": "tsc --noEmit"
   },
@@ -29,10 +31,12 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "wrangler": "^4.53.0"
   }
 }

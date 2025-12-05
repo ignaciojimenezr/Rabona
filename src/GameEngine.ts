@@ -1127,19 +1127,19 @@ export class GameEngine {
           
           // Only add player if one was selected (should always be the case if matchingPlayers.length > 0)
           if (selectedPlayer) {
-            selectedPlayers.push(selectedPlayer);
-            selectedPlayerCombinations.push({
-              player: selectedPlayer,
-              rowCategoryType,
-              rowCategoryValue,
-              columnCategoryType,
-              columnCategoryValue,
-            });
-            rowCells.push({
-              player: selectedPlayer,
-              category: null,
-              mark: null,
-            });
+          selectedPlayers.push(selectedPlayer);
+          selectedPlayerCombinations.push({
+            player: selectedPlayer,
+            rowCategoryType,
+            rowCategoryValue,
+            columnCategoryType,
+            columnCategoryValue,
+          });
+          rowCells.push({
+            player: selectedPlayer,
+            category: null,
+            mark: null,
+          });
           } else {
             // This shouldn't happen, but handle gracefully if all matching players were already selected
             rowCells.push({

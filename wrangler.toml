@@ -1,4 +1,6 @@
-name = "tic-tac-soccer"
+name = "rabona"
+# Change the name above to change the subdomain
+# Example: name = "my-game" → https://my-game.ignaciojimenezrocabado.workers.dev
 main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]

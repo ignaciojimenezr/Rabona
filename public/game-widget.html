@@ -1114,8 +1114,12 @@
         </div>
       </div>
       <div class="intro-actions">
-        <!-- Loading Indicator (Apps SDK UI Circular Progress) -->
+        <!-- Loading Indicator for images -->
         <div id="imageLoadingIndicator" class="loading-indicator" style="display: none;">
+          <div class="spinner"></div>
+        </div>
+        <!-- Loading Indicator for ChatGPT response -->
+        <div id="chatGptLoadingIndicator" class="loading-indicator" style="display: flex;">
           <div class="spinner"></div>
         </div>
         <button id="startGameButton" class="intro-start-button" disabled style="display: none;">Start Game</button>
@@ -1238,6 +1242,10 @@
               game = state.game;
               // Render immediately when game is found from widget state
               render();
+              // Check if ChatGPT is ready (for intro screen button)
+              if (typeof checkChatGptReady === 'function') {
+                checkChatGptReady();
+              }
               return; // Widget state takes priority
             }
           } catch (e) {
@@ -1257,6 +1265,10 @@
             updateWidgetState({ game });
             // Render immediately when game is found from tool output
             render();
+            // Check if ChatGPT is ready (for intro screen button)
+            if (typeof checkChatGptReady === 'function') {
+              checkChatGptReady();
+            }
             return;
           }
           
@@ -1267,6 +1279,10 @@
             updateWidgetState({ game });
             // Render immediately when game is found from tool output
             render();
+            // Check if ChatGPT is ready (for intro screen button)
+            if (typeof checkChatGptReady === 'function') {
+              checkChatGptReady();
+            }
             return;
           }
         }
@@ -1277,7 +1293,16 @@
           updateWidgetState({ game });
           // Render immediately when game is found from tool output
           render();
+          // Check if ChatGPT is ready (for intro screen button)
+          if (typeof checkChatGptReady === 'function') {
+            checkChatGptReady();
+          }
           return;
+        }
+        
+        // If no game found, check if ChatGPT is ready anyway (might still be loading)
+        if (typeof checkChatGptReady === 'function') {
+          checkChatGptReady();
         }
       }
 
@@ -1390,7 +1415,7 @@
               const mainEl = document.getElementById('mainGame');
               if (mainEl && mainEl.style.display !== 'none') {
                 // Main game is visible, render immediately
-                render();
+              render();
               } else {
                 // Main game not visible yet, debounce render
                 if (renderDebounceTimer) {
@@ -1408,7 +1433,13 @@
         // Check immediately and then periodically (reduced frequency for better performance)
         checkToolOutput();
         // Check every 2000ms for tool output updates (reduced from 500ms to reduce lag)
-        const toolOutputInterval = setInterval(checkToolOutput, 2000);
+        const toolOutputInterval = setInterval(() => {
+          checkToolOutput();
+          // Also check if ChatGPT is ready (for intro screen button)
+          if (typeof checkChatGptReady === 'function') {
+            checkChatGptReady();
+          }
+        }, 2000);
         
         // Clean up interval when page unloads
         window.addEventListener('beforeunload', () => {
@@ -3034,6 +3065,7 @@
         let imagesPreloaded = false;
         let preloadPromise = null;
         const loadingIndicator = document.getElementById('imageLoadingIndicator');
+        const chatGptLoadingIndicator = document.getElementById('chatGptLoadingIndicator');
         
         function showLoadingIndicator() {
           if (loadingIndicator) {
@@ -3050,10 +3082,49 @@
           if (loadingIndicator) {
             loadingIndicator.style.display = 'none';
           }
-          const btn = document.getElementById('startGameButton');
-          if (btn) {
-            btn.style.display = 'block';
-            btn.disabled = false;
+          // Only show button if ChatGPT has also finished responding
+          checkChatGptReady();
+        }
+        
+        // Check if ChatGPT has finished responding and game is ready
+        function checkChatGptReady() {
+          // Check if game exists in toolOutput or widgetState
+          const hasGame = game || 
+                         (window.openai?.toolOutput?.structuredContent?.game) ||
+                         (window.openai?.toolOutput?.game) ||
+                         (window.openai?.structuredContent?.game) ||
+                         (window.openai?.widgetState?.game);
+          
+          if (hasGame && imagesPreloaded) {
+            // Both ChatGPT responded and images are loaded - show button
+            if (chatGptLoadingIndicator) {
+              chatGptLoadingIndicator.style.display = 'none';
+            }
+            const btn = document.getElementById('startGameButton');
+            if (btn) {
+              btn.style.display = 'block';
+              btn.disabled = false;
+            }
+          } else if (!hasGame) {
+            // ChatGPT still processing - show loading indicator
+            if (chatGptLoadingIndicator) {
+              chatGptLoadingIndicator.style.display = 'flex';
+            }
+            const btn = document.getElementById('startGameButton');
+            if (btn) {
+              btn.style.display = 'none';
+              btn.disabled = true;
+            }
+          } else if (!imagesPreloaded) {
+            // Images still loading - show image loading indicator
+            if (chatGptLoadingIndicator) {
+              chatGptLoadingIndicator.style.display = 'none';
+            }
+            const btn = document.getElementById('startGameButton');
+            if (btn) {
+              btn.style.display = 'none';
+              btn.disabled = true;
+            }
           }
         }
         
@@ -3176,6 +3247,22 @@
         
         // Initialize from widget state
         initializeWidgetState();
+        
+        // Check ChatGPT readiness periodically (every 500ms) until game is ready
+        const chatGptCheckInterval = setInterval(() => {
+          if (typeof checkChatGptReady === 'function') {
+            checkChatGptReady();
+            // If game is ready and images are loaded, we can stop checking
+            const hasGame = game || 
+                           (window.openai?.toolOutput?.structuredContent?.game) ||
+                           (window.openai?.toolOutput?.game) ||
+                           (window.openai?.structuredContent?.game) ||
+                           (window.openai?.widgetState?.game);
+            if (hasGame && imagesPreloaded) {
+              clearInterval(chatGptCheckInterval);
+            }
+          }
+        }, 500);
         
         // Load players for autocomplete (this can still use HTTP as it's just data loading)
         loadAllPlayers().then(() => {

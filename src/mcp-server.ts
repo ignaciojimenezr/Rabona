@@ -133,15 +133,16 @@ const searchPlayersInputSchema = z.object({
 
 // Helper to create tool response with game state for widget
 // This ensures widget state is properly updated through structured content
+// Helper to create tool response with game state for widget
+// Per Apps SDK: empty content array keeps widget visible, structuredContent updates widget state
 const replyWithGame = (message: string, game: any) => {
   // OpenAI Apps SDK automatically updates widget state from structured content
-  // The widget will read from widget state, which is updated by this structured content
+  // Return empty content array to keep widget visible (text content causes widget to disappear)
   return {
-    content: message ? [{ type: "text" as const, text: message }] : [],
+    content: [], // Empty content keeps widget visible
     structuredContent: { 
       game,
-      // Also include game in a format that updates widget state
-      // Widget state key is typically based on the widget's state structure
+      // Widget state will be updated from structuredContent.game
     },
   };
 };
@@ -207,8 +208,10 @@ function createMcpServer() {
     async (args) => {
       const game = activeGames.get(args.gameId);
       if (!game) {
+        // Return empty content to keep widget visible
         return {
-          content: [{ type: "text" as const, text: `Game ${args.gameId} not found.` }],
+          content: [],
+          structuredContent: { error: `Game ${args.gameId} not found.` },
         };
       }
       return replyWithGame("", game);
@@ -233,19 +236,23 @@ function createMcpServer() {
       const game = activeGames.get(args.gameId);
       if (!game) {
         return {
-          content: [
-            { type: "text", text: `Game ${args.gameId} not found.` },
-          ],
+          content: [],
+          structuredContent: { error: `Game ${args.gameId} not found.` },
         };
       }
 
       const result = gameEngine.makeUserMove(game, args.row, args.col);
       if (result.success) {
         activeGames.set(game.id, result.game);
-        return replyWithGame("Move successful!", result.game);
+        return replyWithGame("", result.game);
       }
+      // Return game state even on error to keep widget visible
       return {
-        content: [{ type: "text" as const, text: result.message || "Invalid move" }],
+        content: [],
+        structuredContent: { 
+          game: result.game || game,
+          error: result.message || "Invalid move"
+        },
       };
     }
   );
@@ -267,19 +274,23 @@ function createMcpServer() {
       const game = activeGames.get(args.gameId);
       if (!game) {
         return {
-          content: [
-            { type: "text", text: `Game ${args.gameId} not found.` },
-          ],
+          content: [],
+          structuredContent: { error: `Game ${args.gameId} not found.` },
         };
       }
 
       const result = gameEngine.makeAIMove(game);
       if (result.success) {
         activeGames.set(game.id, result.game);
-        return replyWithGame("AI made a move!", result.game);
+        return replyWithGame("", result.game);
       }
+      // Return game state even on error to keep widget visible
       return {
-        content: [{ type: "text" as const, text: result.message || "AI move failed" }],
+        content: [],
+        structuredContent: { 
+          game: result.game || game,
+          error: result.message || "AI move failed"
+        },
       };
     }
   );
@@ -301,9 +312,8 @@ function createMcpServer() {
       const game = activeGames.get(args.gameId);
       if (!game) {
         return {
-          content: [
-            { type: "text", text: `Game ${args.gameId} not found.` },
-          ],
+          content: [],
+          structuredContent: { error: `Game ${args.gameId} not found.` },
         };
       }
 
@@ -320,11 +330,11 @@ function createMcpServer() {
           // Make AI move after delay
           const aiResult = gameEngine.makeAIMove(result.game);
           activeGames.set(aiResult.game.id, aiResult.game);
-          return replyWithGame(result.message || "Correct guess!", aiResult.game);
+          return replyWithGame("", aiResult.game);
         }
-        return replyWithGame(result.message || "Correct guess!", result.game);
+        return replyWithGame("", result.game);
       }
-      return replyWithGame(result.message || "Incorrect guess. Try again or skip your turn!", result.game);
+      return replyWithGame("", result.game);
     }
   );
 
@@ -345,18 +355,17 @@ function createMcpServer() {
       const game = activeGames.get(args.gameId);
       if (!game) {
         return {
-          content: [
-            { type: "text", text: `Game ${args.gameId} not found.` },
-          ],
+          content: [],
+          structuredContent: { error: `Game ${args.gameId} not found.` },
         };
       }
 
       if (game.isComplete) {
-        return replyWithGame("Game is already complete.", game);
+        return replyWithGame("", game);
       }
 
       if (game.currentTurn !== 'user') {
-        return replyWithGame("Not your turn.", game);
+        return replyWithGame("", game);
       }
 
       // Switch turn to AI before making move
@@ -364,9 +373,16 @@ function createMcpServer() {
       const result = gameEngine.makeAIMove(gameWithAITurn);
       if (result.success) {
         activeGames.set(game.id, result.game);
-        return replyWithGame("Turn skipped. AI made a move!", result.game);
+        return replyWithGame("", result.game);
       }
-      return replyWithGame(result.message || "AI move failed", result.game);
+      // Return game state even on error to keep widget visible
+      return {
+        content: [],
+        structuredContent: { 
+          game: result.game || game,
+          error: result.message || "AI move failed"
+        },
+      };
     }
   );
 
@@ -414,6 +430,21 @@ app.use(express.json());
 // Health check
 app.get("/", (_req, res) => {
   res.send("Tic Tac Soccer MCP server");
+});
+
+// Debug middleware to log all requests (placed early to catch everything)
+app.use((req, res, next) => {
+  // Log all requests to adapter, link, or manifest endpoints
+  if (req.path.includes('adapter-http') || req.path.includes('link_') || req.path.includes('openai-actions') || req.path.includes('api/mcp')) {
+    console.log(`🔍 [${new Date().toISOString()}] ${req.method} ${req.path}`);
+    if (Object.keys(req.body || {}).length > 0) {
+      console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+    }
+    if (Object.keys(req.query || {}).length > 0) {
+      console.log(`   Query:`, JSON.stringify(req.query, null, 2));
+    }
+  }
+  next();
 });
 
 // Players endpoint for autocomplete
@@ -491,12 +522,40 @@ app.options(MCP_PATH, (_req, res) => {
 
 // OpenAI App adapter HTTP endpoint format
 // OpenAI Apps use: /api/mcp/adapter-http/{app-name}
+// This endpoint handles MCP protocol requests from ChatGPT
 const OPENAI_ADAPTER_PATH = "/api/mcp/adapter-http/:appName";
 
 // Handle OpenAI App adapter format (POST, GET, DELETE)
-app.post(OPENAI_ADAPTER_PATH, handleMcpRequest);
-app.get(OPENAI_ADAPTER_PATH, handleMcpRequest);
-app.delete(OPENAI_ADAPTER_PATH, handleMcpRequest);
+// ChatGPT sends MCP protocol requests to this endpoint
+const handleAdapterRequest = async (req: express.Request, res: express.Response) => {
+  // Log the request for debugging
+  const { appName } = req.params;
+  console.log(`📥 Adapter request: ${req.method} ${req.path} (app: ${appName})`);
+  console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`   Query:`, JSON.stringify(req.query, null, 2));
+  
+  // Ensure body exists and is in correct format for MCP
+  // If body is empty or not in MCP format, ChatGPT might be sending a different format
+  if (!req.body || Object.keys(req.body).length === 0) {
+    console.log(`⚠️ Empty body, returning 400`);
+    return res.status(400).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32600,
+        message: "Invalid Request: Empty body",
+      },
+      id: null,
+    });
+  }
+  
+  // The adapter endpoint should handle MCP protocol requests
+  // Pass it through to the MCP handler
+  await handleMcpRequest(req, res);
+};
+
+app.post(OPENAI_ADAPTER_PATH, handleAdapterRequest);
+app.get(OPENAI_ADAPTER_PATH, handleAdapterRequest);
+app.delete(OPENAI_ADAPTER_PATH, handleAdapterRequest);
 
 // Handle CORS preflight for adapter path
 app.options(OPENAI_ADAPTER_PATH, (_req, res) => {
@@ -507,11 +566,253 @@ app.options(OPENAI_ADAPTER_PATH, (_req, res) => {
   res.sendStatus(204);
 });
 
+// OpenAI Actions manifest endpoint (required for ChatGPT to discover tools)
+// ChatGPT calls this endpoint to discover available tools and widgets
+app.get("/.well-known/openai-actions", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json");
+  
+  // Get server URL from environment or use default
+  // This should be the base URL where the server is accessible (e.g., ngrok URL in production)
+  const serverUrl = process.env.SERVER_URL || `http://localhost:${port}`;
+  
+  // Define tools in OpenAI Actions format
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "create_game",
+        description: "Creates a new tic-tac-toe game with soccer players.",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_game",
+        description: "Gets the current state of a game.",
+        parameters: {
+          type: "object",
+          properties: {
+            gameId: {
+              type: "string",
+              description: "The ID of the game to retrieve",
+            },
+          },
+          required: ["gameId"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "make_move",
+        description: "Makes a move in the game (place O on a player that matches the row category).",
+        parameters: {
+          type: "object",
+          properties: {
+            gameId: { type: "string" },
+            row: { type: "number", minimum: 1, maximum: 3 },
+            col: { type: "number", minimum: 1, maximum: 3 },
+          },
+          required: ["gameId", "row", "col"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "guess_player",
+        description: "Guess a player name for a specific cell in the game.",
+        parameters: {
+          type: "object",
+          properties: {
+            gameId: { type: "string" },
+            row: { type: "number", minimum: 1, maximum: 3 },
+            col: { type: "number", minimum: 1, maximum: 3 },
+            playerName: { type: "string" },
+          },
+          required: ["gameId", "row", "col", "playerName"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "skip_turn",
+        description: "Skip your turn and let the AI make a move.",
+        parameters: {
+          type: "object",
+          properties: {
+            gameId: { type: "string" },
+          },
+          required: ["gameId"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "search_players",
+        description: "Search for players by team, country, position, or league.",
+        parameters: {
+          type: "object",
+          properties: {
+            team: { type: "string" },
+            country: { type: "string" },
+            position: { type: "string" },
+            league: { type: "string" },
+          },
+          required: [],
+        },
+      },
+    },
+  ];
+  
+  res.json({
+    serverUrl, // Tell ChatGPT where to call tools (MCP endpoint)
+    tools,
+    widgets: [
+      {
+        id: "game-widget",
+        name: "Tic Tac Soccer Game",
+        description: "Play tic-tac-toe with soccer players",
+        url: `ui://widget/game-widget.html`,
+      },
+    ],
+  });
+});
+
+// ChatGPT tool execution endpoint (handles format: /{appName}/link_{id}/{toolName})
+// This is the format ChatGPT uses when calling tools directly
+app.post("/:appName/link_:linkId/:toolName", async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json");
+  
+  const { toolName } = req.params;
+  const args = req.body || {};
+  
+  try {
+    // Create MCP request
+    const mcpRequest = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "tools/call",
+      params: {
+        name: toolName,
+        arguments: args,
+      },
+    };
+    
+    // Create a proper request object for the MCP handler
+    const mockReq = {
+      body: mcpRequest,
+      method: "POST",
+      headers: { 
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+    } as express.Request;
+    
+    // Create a response object that captures the result
+    let responseSent = false;
+    const mockRes = {
+      setHeader: (name: string, value: string) => {
+        res.setHeader(name, value);
+      },
+      status: (code: number) => {
+        if (!responseSent) {
+          res.status(code);
+        }
+        return mockRes;
+      },
+      json: (data: any) => {
+        if (!responseSent) {
+          responseSent = true;
+          // MCP response format: { jsonrpc: "2.0", result: {...}, id: ... }
+          // Extract result - this is our tool response with content and structuredContent
+          if (data.result) {
+            const result = data.result;
+            // The result should already have content: [] and structuredContent: { game }
+            // Return it directly as ChatGPT expects this format
+            res.json(result);
+          } else if (data.error) {
+            // Handle errors - still return empty content to keep widget visible
+            res.status(500).json({
+              content: [],
+              structuredContent: { error: data.error.message || "Tool execution failed" },
+            });
+          } else {
+            res.json(data);
+          }
+        }
+      },
+      send: (data: any) => {
+        if (!responseSent) {
+          responseSent = true;
+          // Try to parse as JSON if it's a string
+          try {
+            const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+            if (parsed.result) {
+              res.json(parsed.result);
+            } else {
+              res.send(data);
+            }
+          } catch {
+            res.send(data);
+          }
+        }
+      },
+      on: () => {},
+      headersSent: false,
+    } as any;
+    
+    // Use the existing MCP handler
+    await handleMcpRequest(mockReq, mockRes);
+    
+    // If no response was sent, send a default response to keep widget visible
+    if (!responseSent) {
+      res.status(200).json({ 
+        content: [],
+        structuredContent: { error: "No response from tool" }
+      });
+    }
+  } catch (error: any) {
+    console.error(`Error executing tool ${toolName}:`, error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        content: [],
+        structuredContent: { 
+          error: "Tool execution failed",
+          message: error.message 
+        },
+      });
+    }
+  }
+});
+
+// Handle CORS preflight for tool execution endpoint
+app.options("/:appName/link_:linkId/:toolName", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.sendStatus(204);
+});
+
 app.listen(port, () => {
   console.log(
     `\n🚀 Tic Tac Soccer MCP server listening on http://localhost:${port}${MCP_PATH}`
   );
   console.log(`\n📋 Ready for ChatGPT connection!`);
-  console.log(`   Use: http://localhost:${port}${MCP_PATH}\n`);
+  console.log(`   Use: http://localhost:${port}${MCP_PATH}`);
+  console.log(`\n🔗 Available endpoints:`);
+  console.log(`   - POST /api/mcp/adapter-http/:appName (MCP adapter)`);
+  console.log(`   - POST /:appName/link_:linkId/:toolName (Direct tool calls)`);
+  console.log(`   - GET /.well-known/openai-actions (Manifest)`);
+  console.log(`   - POST ${MCP_PATH} (MCP protocol)\n`);
 });
 

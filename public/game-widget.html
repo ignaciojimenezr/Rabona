@@ -1236,6 +1236,8 @@
             const state = typeof widgetState === 'string' ? JSON.parse(widgetState) : widgetState;
             if (state && typeof state === 'object' && state.game) {
               game = state.game;
+              // Render immediately when game is found from widget state
+              render();
               return; // Widget state takes priority
             }
           } catch (e) {
@@ -1253,6 +1255,8 @@
             game = structuredContent.game;
             // IMPORTANT: Save to widget state for persistence across future tool invocations
             updateWidgetState({ game });
+            // Render immediately when game is found from tool output
+            render();
             return;
           }
           
@@ -1261,6 +1265,8 @@
             game = window.openai.toolOutput.game;
             // Save to widget state for persistence
             updateWidgetState({ game });
+            // Render immediately when game is found from tool output
+            render();
             return;
           }
         }
@@ -1269,6 +1275,8 @@
         if (!game && window.openai?.structuredContent?.game) {
           game = window.openai.structuredContent.game;
           updateWidgetState({ game });
+          // Render immediately when game is found from tool output
+          render();
           return;
         }
       }
@@ -1378,14 +1386,21 @@
               // Persist to widget state for future tool invocations
               updateWidgetState({ game });
               
-              // Debounce render to avoid rapid re-renders
-              if (renderDebounceTimer) {
-                clearTimeout(renderDebounceTimer);
+              // If main game is visible, render immediately (no debounce)
+              const mainEl = document.getElementById('mainGame');
+              if (mainEl && mainEl.style.display !== 'none') {
+                // Main game is visible, render immediately
+                render();
+              } else {
+                // Main game not visible yet, debounce render
+                if (renderDebounceTimer) {
+                  clearTimeout(renderDebounceTimer);
+                }
+                renderDebounceTimer = setTimeout(() => {
+                  render();
+                  renderDebounceTimer = null;
+                }, 100); // 100ms debounce
               }
-              renderDebounceTimer = setTimeout(() => {
-              render();
-                renderDebounceTimer = null;
-              }, 100); // 100ms debounce
             }
           }
         };
@@ -2184,36 +2199,49 @@
         // Game rendering (debug logs removed for cleaner console)
 
         boardEl.innerHTML = "";
-        
+
         // Track images that need to load
         let imagesToLoad = 0;
         let imagesLoaded = 0;
         
-        // Fallback timeout to ensure overlay always hides (max 2 seconds)
-        let overlayTimeout = setTimeout(() => {
+        // Multiple fallback timeouts to ensure overlay always hides
+        let overlayTimeout1 = null;
+        let overlayTimeout2 = null;
+        let overlayTimeout3 = null;
+        
+        const hideOverlay = () => {
+          if (overlayTimeout1) clearTimeout(overlayTimeout1);
+          if (overlayTimeout2) clearTimeout(overlayTimeout2);
+          if (overlayTimeout3) clearTimeout(overlayTimeout3);
           if (loadingOverlay) {
             loadingOverlay.style.display = 'none';
           }
-        }, 2000);
+        };
+        
+        // Quick check if no images need loading (200ms)
+        overlayTimeout1 = setTimeout(() => {
+          if (imagesToLoad === 0) {
+            hideOverlay();
+          }
+        }, 200);
+        
+        // After grid is rendered (500ms)
+        overlayTimeout2 = setTimeout(() => {
+          hideOverlay();
+        }, 500);
+        
+        // Final fallback (1 second)
+        overlayTimeout3 = setTimeout(() => {
+          hideOverlay();
+        }, 1000);
         
         const checkAllImagesLoaded = () => {
-          imagesLoaded++;
-          if (imagesToLoad > 0 && imagesLoaded >= imagesToLoad && loadingOverlay) {
-            // All images loaded, hide overlay with slight delay for smooth transition
-            clearTimeout(overlayTimeout);
-            setTimeout(() => {
-              if (loadingOverlay) {
-                loadingOverlay.style.display = 'none';
-              }
-            }, 100);
-          } else if (imagesToLoad === 0 && loadingOverlay) {
+          if (imagesToLoad > 0 && imagesLoaded >= imagesToLoad) {
+            // All images loaded, hide overlay
+            hideOverlay();
+          } else if (imagesToLoad === 0) {
             // No images to load, hide immediately
-            clearTimeout(overlayTimeout);
-            setTimeout(() => {
-              if (loadingOverlay) {
-                loadingOverlay.style.display = 'none';
-              }
-            }, 50);
+            hideOverlay();
           }
         };
         
@@ -2223,6 +2251,16 @@
             checkAllImagesLoaded();
           }
         }, 50);
+        
+        // Also check after grid is fully rendered
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            // Grid should be rendered by now
+            if (imagesToLoad === 0) {
+              hideOverlay();
+            }
+          });
+        });
 
         // Handle game completion - show win modal for user wins
         if (game.isComplete && game.winner === "user") {
@@ -2339,6 +2377,9 @@
                   
                   // Function to calculate and apply proper size and hide spinner
                   const calculateSize = function() {
+                    // Increment loaded counter when image actually loads
+                    imagesLoaded++;
+                    
                     // Hide spinner when image loads
                     if (spinner.parentNode) {
                       spinner.style.display = 'none';
@@ -2387,6 +2428,8 @@
                   // Set up onload handler before setting src
                   img.onload = calculateSize;
                   img.onerror = () => {
+                    // Increment loaded counter even on error (so overlay can hide)
+                    imagesLoaded++;
                     // Hide spinner on error
                     if (spinner.parentNode) {
                       spinner.style.display = 'none';
@@ -2519,6 +2562,9 @@
                   
                   // Function to calculate and apply proper size and hide spinner
                   const calculateSize = function() {
+                    // Increment loaded counter when image actually loads
+                    imagesLoaded++;
+                    
                     // Hide spinner when image loads
                     if (spinner.parentNode) {
                       spinner.style.display = 'none';
@@ -2567,6 +2613,8 @@
                   // Set up onload handler before setting src
                   img.onload = calculateSize;
                   img.onerror = () => {
+                    // Increment loaded counter even on error (so overlay can hide)
+                    imagesLoaded++;
                     // Hide spinner on error
                     if (spinner.parentNode) {
                       spinner.style.display = 'none';
@@ -3084,6 +3132,10 @@
             // Ensure images are preloaded before transitioning
             await ensureImagesPreloaded();
             
+            // Re-initialize widget state to ensure we have the latest game from tool output
+            // This is critical when ChatGPT calls create_game before user clicks "Start Game"
+            initializeWidgetState();
+            
             introScreen.classList.add("hidden");
             // After the fade/slide animation, hide intro and show main game
             setTimeout(() => {
@@ -3095,14 +3147,21 @@
                 window.openai.requestDisplayMode({ mode: 'fullscreen' });
               }
               
-              // Show loading overlay immediately before any rendering
-              const loadingOverlay = document.getElementById('gameLoadingOverlay');
-              if (loadingOverlay) {
-                loadingOverlay.style.display = 'flex';
+              // If game already exists (from tool output), render immediately
+              // Otherwise show loading overlay and wait for game
+              if (game) {
+                // Game exists, render immediately (overlay will be handled by render())
+                render();
+              } else {
+                // No game yet, show loading overlay
+                const loadingOverlay = document.getElementById('gameLoadingOverlay');
+                if (loadingOverlay) {
+                  loadingOverlay.style.display = 'flex';
+                }
+                // Ensure we have images loaded for axes; if they arrive slightly later,
+                // schedule a re-render once data URIs are available.
+                scheduleImageHydrate();
               }
-              // Ensure we have images loaded for axes; if they arrive slightly later,
-              // schedule a re-render once data URIs are available.
-              scheduleImageHydrate();
             }, 250);
           });
         }

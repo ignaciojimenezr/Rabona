@@ -103,7 +103,7 @@ CLUBS = [
     },
     {
         "team": "Bayern Munich",
-        "league": "Bundesliga",
+        "league": "Bayern",
         "urls": [
             "https://en.wikipedia.org/wiki/2025%E2%80%9326_FC_Bayern_Munich_season",
             "https://en.wikipedia.org/wiki/2024%E2%80%9325_FC_Bayern_Munich_season",

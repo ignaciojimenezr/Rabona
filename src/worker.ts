@@ -33,7 +33,9 @@ const replyWithGame = (message: string, game: Game) => {
 };
 
 // Input schemas
-const createGameInputSchema = z.object({});
+const createGameInputSchema = z.object({
+  resetDifficulty: z.boolean().optional(), // Optional flag to reset difficulty to easy
+});
 const getGameInputSchema = z.object({
   gameId: z.string().min(1),
 });
@@ -80,6 +82,44 @@ async function saveGame(env: Env, game: Game): Promise<void> {
   }));
 }
 
+// Helper to save difficulty progress to Durable Object
+async function saveDifficultyProgress(env: Env, state: {
+  currentDifficulty: 'easy' | 'medium' | 'hard';
+  gamesWonAtCurrentDifficulty: number;
+  lastGameWinner: 'user' | 'ai' | 'draw' | null;
+}): Promise<void> {
+  const id = env.GAME_STORE.idFromName("user_progress");
+  const stub = env.GAME_STORE.get(id);
+  await stub.fetch(new Request("http://dummy/progress", {
+    method: "PUT",
+    body: JSON.stringify({ progress: state }),
+  }));
+}
+
+// Helper to load difficulty progress from Durable Object
+async function loadDifficultyProgress(env: Env): Promise<{
+  currentDifficulty: 'easy' | 'medium' | 'hard';
+  gamesWonAtCurrentDifficulty: number;
+  lastGameWinner: 'user' | 'ai' | 'draw' | null;
+} | null> {
+  const id = env.GAME_STORE.idFromName("user_progress");
+  const stub = env.GAME_STORE.get(id);
+  const response = await stub.fetch(new Request("http://dummy/progress", {
+    method: "GET",
+  }));
+  
+  if (response.status === 404) {
+    return null;
+  }
+  
+  const data = await response.json();
+  if (data.progress) {
+    return data.progress;
+  }
+  
+  return null;
+}
+
 // Helper to load widget HTML from Assets and inject image URLs
 async function loadGameHtml(env: Env, request: Request): Promise<string> {
   const url = new URL(request.url);
@@ -99,7 +139,7 @@ async function loadGameHtml(env: Env, request: Request): Promise<string> {
         'soccer_pitch.png', 'barca.png', 'madrid.png', 'atletico.svg', 'mancity.png',
         'united.png', 'Chelsea.png', 'Liverpool_FC.png', 'arsenal.png', 'tottenham.png',
         'bayern.svg', 'Soccer_Player.png', 'Shirt_Number.png', 'Goalkeeper.webp',
-        'holand.png', 'norway.png', 'Bundesliga.png', 'LaLiga.png', 'premier.png',
+        'holand.png', 'norway.png', 'bayern.svg', 'LaLiga.png', 'premier.png',
         'England.png', 'Spain.png', 'belgium.svg', 'brazil.webp', 'france.webp',
         'germany.webp', 'italy.png', 'portugal.png', 'sweden.svg', 'uruguay.png',
         'afa.png', 'Logo.png'
@@ -217,7 +257,45 @@ function createMcpServer(env: Env, request: Request) {
 
   // Register create_game tool
   const createGameHandler = async (args: any) => {
-    const game = gameEngine.generateGame();
+    // Reset difficulty if requested (e.g., when user exits after losing)
+    const shouldReset = args.resetDifficulty === true;
+    
+    // Load saved progress if not resetting
+    if (!shouldReset) {
+      const savedProgress = await loadDifficultyProgress(env);
+      if (savedProgress) {
+        console.log('Restoring progress:', savedProgress);
+        gameEngine.restoreDifficultyState(savedProgress);
+      } else {
+        console.log('No saved progress found, starting fresh');
+      }
+    } else {
+      console.log('Resetting difficulty (forceReset=true)');
+    }
+    
+    // Get previous difficulty before generating (to track transitions)
+    const previousDifficulty = gameEngine.getDifficultyState().currentDifficulty;
+    const stateBeforeGenerate = gameEngine.getDifficultyState();
+    console.log('State before generateGame:', stateBeforeGenerate);
+    
+    const game = gameEngine.generateGame(undefined, shouldReset);
+    
+    // Get new difficulty after generation (may have progressed)
+    const newDifficulty = gameEngine.getDifficultyState().currentDifficulty;
+    const stateAfterGenerate = gameEngine.getDifficultyState();
+    console.log('State after generateGame:', stateAfterGenerate);
+    console.log('Game progressToNextLevel:', game.progressToNextLevel);
+    
+    // If difficulty progressed, update the game's previousDifficulty field
+    if (previousDifficulty !== newDifficulty) {
+      game.previousDifficulty = previousDifficulty;
+    }
+    
+    // Save progress after generating game (includes any progression)
+    const progressState = gameEngine.getDifficultyState();
+    await saveDifficultyProgress(env, progressState);
+    console.log('Saved progress:', progressState);
+    
     await saveGame(env, game);
     return replyWithGame(`Created new game: ${game.id}`, game);
   };
@@ -303,6 +381,13 @@ function createMcpServer(env: Env, request: Request) {
     const result = gameEngine.makeUserMove(game, args.row, args.col);
     if (result.success) {
       await saveGame(env, result.game);
+      
+      // Save progress if game completed
+      if (result.game.isComplete) {
+        const progressState = gameEngine.getDifficultyState();
+        await saveDifficultyProgress(env, progressState);
+      }
+      
       return replyWithGame("", result.game);
     }
     return {
@@ -357,6 +442,13 @@ function createMcpServer(env: Env, request: Request) {
     const result = gameEngine.makeAIMove(game);
     if (result.success) {
       await saveGame(env, result.game);
+      
+      // Save progress if game completed
+      if (result.game.isComplete) {
+        const progressState = gameEngine.getDifficultyState();
+        await saveDifficultyProgress(env, progressState);
+      }
+      
       return replyWithGame("", result.game);
     }
     return {

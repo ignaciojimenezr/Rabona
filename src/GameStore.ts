@@ -1,4 +1,5 @@
 import type { Game } from "./GameEngine.js";
+import type { DurableObjectState } from "@cloudflare/workers-types";
 
 /**
  * Durable Object for storing game state
@@ -46,6 +47,22 @@ export class GameStore {
       this.game = null;
       await this.state.storage.delete("game");
       return Response.json({ success: true });
+    }
+
+    // Get progress (for user_progress Durable Object)
+    if (method === "GET" && path === "/progress") {
+      const stored = await this.state.storage.get<any>("progress");
+      if (stored) {
+        return Response.json({ progress: stored });
+      }
+      return Response.json({ progress: null }, { status: 404 });
+    }
+
+    // Set progress (for user_progress Durable Object)
+    if (method === "PUT" && path === "/progress") {
+      const body = await request.json();
+      await this.state.storage.put("progress", body.progress);
+      return Response.json({ success: true, progress: body.progress });
     }
 
     return new Response("Not Found", { status: 404 });

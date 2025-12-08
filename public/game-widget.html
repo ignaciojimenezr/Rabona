@@ -1029,66 +1029,56 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       }
 
-      /* Level Transition Overlay (Continuous Transition) */
-      .level-transition {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.95);
-        z-index: 3000;
+      /* Lose Modal Buttons */
+      .lose-modal-buttons {
         display: flex;
-        align-items: center;
+        gap: 12px;
         justify-content: center;
-        animation: fadeIn 0.3s ease-in;
+        margin-top: 24px;
       }
 
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
+      .lose-button {
+        padding: 10px 24px;
+        background: #374151; /* Gray 700 */
+        color: #ffffff; /* White text */
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        flex: 1;
+        max-width: 140px;
+        min-height: 40px;
       }
 
-      .level-transition-content {
-        text-align: center;
-        animation: slideUpFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      .lose-button-primary {
+        background: #374151; /* Gray 700 */
       }
 
-      @keyframes slideUpFadeIn {
-        0% {
-          opacity: 0;
-          transform: translateY(30px);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0);
-        }
+      .lose-button-primary:hover {
+        background: #4b5563; /* Gray 600 - lighter on hover */
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       }
 
-      .level-transition-text {
-        font-size: 64px;
-        font-weight: 800;
-        color: #000000; /* Black 900 */
-        margin-bottom: 16px;
-        text-transform: uppercase;
-        letter-spacing: 4px;
+      .lose-button-secondary {
+        background: #6b7280; /* Gray 600 */
       }
 
-      .level-transition-text.easy {
-        color: #000000; /* Black 900 */
+      .lose-button-secondary:hover {
+        background: #9ca3af; /* Gray 400 - lighter on hover */
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       }
 
-      .level-transition-text.medium {
-        color: #000000; /* Black 900 */
+      .lose-button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
       }
 
-      .level-transition-text.hard {
-        color: #000000; /* Black 900 */
-      }
+      /* Level Transition Overlay - REMOVED (only progress bar animation now) */
     </style>
   </head>
   <body>
@@ -1114,10 +1104,6 @@
         </div>
       </div>
       <div class="intro-actions">
-        <!-- Loading Indicator for images -->
-        <div id="imageLoadingIndicator" class="loading-indicator" style="display: none;">
-          <div class="spinner"></div>
-        </div>
         <!-- Loading Indicator for ChatGPT response -->
         <div id="chatGptLoadingIndicator" class="loading-indicator" style="display: flex;">
           <div class="spinner"></div>
@@ -1188,12 +1174,39 @@
       </div>
     </div>
 
-    <!-- Level Transition Overlay -->
-    <div id="levelTransition" class="level-transition" style="display: none;">
-      <div id="levelTransitionContent" class="level-transition-content">
-        <div id="levelTransitionText" class="level-transition-text"></div>
+    <!-- You Lost Modal -->
+    <div id="loseModal" class="win-modal">
+      <div id="loseModalContent" class="win-modal-content">
+        <h2 class="win-title">You Lost</h2>
+        <p id="loseMessage" class="win-message" style="display: none;">Better luck next time!</p>
+        <div class="lose-modal-buttons">
+          <button id="playAgainButton" class="lose-button lose-button-primary" onclick="playAgain()">
+            Play Again
+          </button>
+          <button id="exitButton" class="lose-button lose-button-secondary" onclick="exitLoseModal()">
+            Exit
+          </button>
+        </div>
       </div>
     </div>
+
+    <!-- Draw Modal -->
+    <div id="drawModal" class="win-modal">
+      <div id="drawModalContent" class="win-modal-content">
+        <h2 class="win-title">Draw</h2>
+        <p id="drawMessage" class="win-message" style="display: none;">It's a tie!</p>
+        <div class="lose-modal-buttons">
+          <button id="playAgainDrawButton" class="lose-button lose-button-primary" onclick="playAgain()">
+            Play Again
+          </button>
+          <button id="exitDrawButton" class="lose-button lose-button-secondary" onclick="exitLoseModal()">
+            Exit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Level Transition Overlay - REMOVED (only progress bar animation now) -->
 
     <script type="module">
       /**
@@ -2008,7 +2021,7 @@
         }
         
         // Check if it's a league
-        if (['LaLiga', 'Premier League', 'Bundesliga'].includes(categoryValue)) {
+        if (['LaLiga', 'Premier League'].includes(categoryValue)) {
           return 'League';
         }
         
@@ -2121,8 +2134,7 @@
           // Map league names to images - NEVER use player silhouettes for leagues
           const leagueMap = {
             'LaLiga': 'LaLiga.png',
-            'Premier League': 'premier.png',
-            'Bundesliga': 'Bundesliga.png'
+            'Premier League': 'premier.png'
           };
           const imageName = leagueMap[categoryValue];
           if (imageName) {
@@ -2293,9 +2305,16 @@
           });
         });
 
-        // Handle game completion - show win modal for user wins
+        // Handle game completion - animate progress bar first, then show modals
         if (game.isComplete && game.winner === "user") {
-          showWinModal(game);
+          // Animate progress bar before showing win modal
+          animateProgressBar(game).then(() => {
+            showWinModal(game);
+          });
+        } else if (game.isComplete && game.winner === "ai") {
+          showLoseModal(game);
+        } else if (game.isComplete && game.winner === "draw") {
+          showDrawModal(game);
         }
 
         // Render 4x4 grid
@@ -2821,6 +2840,50 @@
         }
       }
 
+      // Animate progress bar before showing win modal
+      function animateProgressBar(game) {
+        return new Promise((resolve) => {
+          const sliderFill = document.querySelector("#difficultySliderFill");
+          if (!sliderFill || !game) {
+            resolve();
+            return;
+          }
+          
+          const currentProgress = parseFloat(sliderFill.style.width) || 0;
+          const newProgress = game.progressToNextLevel || 0;
+          
+          // Only animate if progress increased
+          if (newProgress > currentProgress) {
+            // Animate from current to new progress
+            const duration = 800; // 800ms animation
+            const startTime = Date.now();
+            const startProgress = currentProgress;
+            const progressDiff = newProgress - currentProgress;
+            
+            const animate = () => {
+              const elapsed = Date.now() - startTime;
+              const progress = Math.min(1, elapsed / duration);
+              
+              // Easing function (ease-out)
+              const eased = 1 - Math.pow(1 - progress, 3);
+              const current = startProgress + (progressDiff * eased);
+              
+              sliderFill.style.width = `${current}%`;
+              
+              if (progress < 1) {
+                requestAnimationFrame(animate);
+              } else {
+                resolve();
+              }
+            };
+            
+            requestAnimationFrame(animate);
+          } else {
+            resolve();
+          }
+        });
+      }
+
       // Show win modal with grow animation
       function showWinModal(game) {
         const winModal = document.querySelector("#winModal");
@@ -2892,32 +2955,15 @@
             const newDifficulty = gameData.difficulty || 'easy';
             const previousDifficulty = gameData.previousDifficulty;
             
-            // Check if difficulty changed (for transition)
+            // Check if difficulty changed - animate progress bar
             if (previousDifficulty && previousDifficulty !== newDifficulty) {
-              // Show level transition overlay with continuous transition
-              const levelTransition = document.querySelector("#levelTransition");
-              const levelTransitionText = document.querySelector("#levelTransitionText");
-              
-              const levelLabels = {
-                easy: 'Easy',
-                medium: 'Medium',
-                hard: 'Hard'
-              };
-              
-              levelTransitionText.textContent = levelLabels[newDifficulty];
-              levelTransitionText.className = `level-transition-text ${newDifficulty}`;
-              levelTransition.style.display = 'flex';
-              
-              // Wait for transition animation, then update game
-              setTimeout(() => {
-                // Hide transition overlay
-                levelTransition.style.display = 'none';
-                
-                // Update game state
+              // Animate progress bar to show level progression
+              animateProgressBar(gameData).then(() => {
+                // Update game state after animation
                 game = gameData;
                 updateWidgetState({ game });
                 render();
-              }, 2000); // Wait 2 seconds for transition animation
+              });
             } else {
               // No level change, just create new game
               game = gameData;
@@ -2932,10 +2978,93 @@
         }
       }
 
+      // Show lose modal
+      function showLoseModal(game) {
+        const loseModal = document.querySelector("#loseModal");
+        loseModal.classList.add('active');
+      }
+
+      // Show draw modal
+      function showDrawModal(game) {
+        const drawModal = document.querySelector("#drawModal");
+        drawModal.classList.add('active');
+      }
+
+      // Play again - use sendFollowUpMessage to send "create game" message and exit widget
+      async function playAgain() {
+        // Close lose modal
+        const loseModal = document.querySelector("#loseModal");
+        loseModal.classList.remove('active');
+        
+        try {
+          // Use sendFollowUpMessage to send "create game" as a text message
+          if (window.openai?.sendFollowUpMessage && typeof window.openai.sendFollowUpMessage === 'function') {
+            await window.openai.sendFollowUpMessage({ prompt: "create game" });
+          } else {
+            console.warn('sendFollowUpMessage not available');
+          }
+        } catch (error) {
+          console.error('Error sending follow-up message:', error);
+        }
+        
+        // Exit widget after sending message
+        if (window.openai?.requestClose && typeof window.openai.requestClose === 'function') {
+          window.openai.requestClose();
+        } else if (window.openai?.closeWidget && typeof window.openai.closeWidget === 'function') {
+          window.openai.closeWidget();
+        }
+      }
+
+      // Exit lose modal - close widget and reset difficulty for future players
+      async function exitLoseModal() {
+        // Close lose modal
+        const loseModal = document.querySelector("#loseModal");
+        loseModal.classList.remove('active');
+        
+        // Reset widget state to clear game
+        updateWidgetState({ game: null });
+        
+        // Reset difficulty by calling create_game with resetDifficulty flag
+        // This ensures the next player starts at easy difficulty
+        try {
+          const baseUrl = window.MCP_SERVER_URL || window.location.origin;
+          const mcpUrl = `${baseUrl}/mcp`;
+          
+          await fetch(mcpUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'tools/call',
+              params: {
+                name: 'create_game',
+                arguments: { resetDifficulty: true }
+              },
+              id: Date.now()
+            })
+          });
+        } catch (error) {
+          console.error('Error resetting difficulty:', error);
+        }
+        
+        // Exit widget using OpenAI Apps SDK API
+        if (window.openai?.requestClose && typeof window.openai.requestClose === 'function') {
+          window.openai.requestClose();
+        } else if (window.openai?.closeWidget && typeof window.openai.closeWidget === 'function') {
+          window.openai.closeWidget();
+        } else if (window.openai?.exitWidget && typeof window.openai.exitWidget === 'function') {
+          window.openai.exitWidget();
+        }
+      }
+
       // Make functions available globally
       window.closeSearch = closeSearch;
       window.skipTurn = skipTurn;
       window.continueToNextLevel = continueToNextLevel;
+      window.playAgain = playAgain;
+      window.exitLoseModal = exitLoseModal;
 
       let imageHydrateInterval = null;
 
@@ -3023,7 +3152,7 @@
             'norway.png', 'sweden.svg', 'uruguay.png', 'poland.webp', 'denmark.webp',
             'usa.webp', 'slovenia.webp', 'slovakia.webp', 'korea.webp', 'uzbekistan.webp',
             // League logos
-            'LaLiga.png', 'premier.png', 'Bundesliga.png'
+            'LaLiga.png', 'premier.png', 'bayern.svg'
           ];
           
           // Priority 2: Other images
@@ -3064,12 +3193,12 @@
         // Pre-load images when intro screen is visible
         let imagesPreloaded = false;
         let preloadPromise = null;
-        const loadingIndicator = document.getElementById('imageLoadingIndicator');
         const chatGptLoadingIndicator = document.getElementById('chatGptLoadingIndicator');
         
         function showLoadingIndicator() {
-          if (loadingIndicator) {
-            loadingIndicator.style.display = 'flex';
+          // Show ChatGPT loading indicator (which covers both ChatGPT and image loading)
+          if (chatGptLoadingIndicator) {
+            chatGptLoadingIndicator.style.display = 'flex';
           }
           const btn = document.getElementById('startGameButton');
           if (btn) {
@@ -3079,9 +3208,6 @@
         }
         
         function hideLoadingIndicator() {
-          if (loadingIndicator) {
-            loadingIndicator.style.display = 'none';
-          }
           // Only show button if ChatGPT has also finished responding
           checkChatGptReady();
         }
@@ -3105,20 +3231,10 @@
               btn.style.display = 'block';
               btn.disabled = false;
             }
-          } else if (!hasGame) {
-            // ChatGPT still processing - show loading indicator
+          } else {
+            // Either ChatGPT still processing or images still loading - show loading indicator
             if (chatGptLoadingIndicator) {
               chatGptLoadingIndicator.style.display = 'flex';
-            }
-            const btn = document.getElementById('startGameButton');
-            if (btn) {
-              btn.style.display = 'none';
-              btn.disabled = true;
-            }
-          } else if (!imagesPreloaded) {
-            // Images still loading - show image loading indicator
-            if (chatGptLoadingIndicator) {
-              chatGptLoadingIndicator.style.display = 'none';
             }
             const btn = document.getElementById('startGameButton');
             if (btn) {

@@ -2919,6 +2919,11 @@
           const baseUrl = window.MCP_SERVER_URL || window.location.origin;
           const mcpUrl = `${baseUrl}/mcp`;
           
+          // Calculate progress override from current game (fallback if server has no saved progress)
+          const currentProgress = game.progressToNextLevel || 0;
+          const winsOverride = Math.round(currentProgress / 20); // 5 wins => 100%
+          const difficultyOverride = game.difficulty || 'easy';
+
           // Create new game (server handles difficulty progression)
           const response = await fetch(mcpUrl, {
             method: 'POST',
@@ -2930,7 +2935,11 @@
               method: 'tools/call',
               params: {
                 name: 'create_game',
-                arguments: {}
+                arguments: {
+                  progressOverride: currentProgress,
+                  winsOverride,
+                  difficultyOverride,
+                }
               },
               id: Date.now()
             })

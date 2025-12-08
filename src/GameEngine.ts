@@ -316,7 +316,9 @@ export class GameEngine {
     if (this.currentDifficulty === 'easy' || this.currentDifficulty === 'medium') {
       // 5 wins per level = 20% per win
       const progress = Math.min(100, (this.gamesWonAtCurrentDifficulty / 5) * 100);
-      return Math.round(progress);
+      const rounded = Math.round(progress);
+      console.log(`GameEngine: calculateProgressToNextLevel - gamesWon=${this.gamesWonAtCurrentDifficulty}, difficulty=${this.currentDifficulty}, progress=${rounded}%`);
+      return rounded;
     }
     
     return 100; // Hard is max, always at 100%
@@ -385,9 +387,11 @@ export class GameEngine {
     gamesWonAtCurrentDifficulty: number;
     lastGameWinner: 'user' | 'ai' | 'draw' | null;
   }): void {
+    console.log('GameEngine: Restoring difficulty state:', state);
     this.currentDifficulty = state.currentDifficulty;
     this.gamesWonAtCurrentDifficulty = state.gamesWonAtCurrentDifficulty;
     this.lastGameWinner = state.lastGameWinner;
+    console.log('GameEngine: After restore, gamesWonAtCurrentDifficulty =', this.gamesWonAtCurrentDifficulty);
   }
 
   /**

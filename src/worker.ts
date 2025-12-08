@@ -35,6 +35,11 @@ const replyWithGame = (message: string, game: Game) => {
 // Input schemas
 const createGameInputSchema = z.object({
   resetDifficulty: z.boolean().optional(), // Optional flag to reset difficulty to easy
+  // Optional overrides sent from the widget to preserve progress when the server
+  // cannot read previously saved progress (e.g., stateless worker instance).
+  progressOverride: z.number().optional(), // Percentage 0-100
+  winsOverride: z.number().optional(), // Wins at current difficulty
+  difficultyOverride: z.enum(['easy', 'medium', 'hard']).optional(),
 });
 const getGameInputSchema = z.object({
   gameId: z.string().min(1),
@@ -261,43 +266,123 @@ function createMcpServer(env: Env, request: Request) {
     const shouldReset = args.resetDifficulty === true;
     
     // Load saved progress if not resetting
+    let savedProgress: {
+      currentDifficulty: 'easy' | 'medium' | 'hard';
+      gamesWonAtCurrentDifficulty: number;
+      lastGameWinner: 'user' | 'ai' | 'draw' | null;
+    } | null = null;
+    
     if (!shouldReset) {
-      const savedProgress = await loadDifficultyProgress(env);
+      savedProgress = await loadDifficultyProgress(env);
       if (savedProgress) {
-        console.log('Restoring progress:', savedProgress);
         gameEngine.restoreDifficultyState(savedProgress);
       } else {
-        console.log('No saved progress found, starting fresh');
+        // Fallback: Try to get progress from the last completed game
+        // This is a backup in case Durable Object progress storage fails
+        // We can't easily get the last game, so we'll rely on Durable Objects
+        // But at least we know savedProgress is null
       }
-    } else {
-      console.log('Resetting difficulty (forceReset=true)');
     }
     
     // Get previous difficulty before generating (to track transitions)
     const previousDifficulty = gameEngine.getDifficultyState().currentDifficulty;
-    const stateBeforeGenerate = gameEngine.getDifficultyState();
-    console.log('State before generateGame:', stateBeforeGenerate);
     
+    // Apply overrides from client if provided (fallback when server state not restored)
+    if (!shouldReset && (args.progressOverride !== undefined || args.winsOverride !== undefined || args.difficultyOverride !== undefined)) {
+      const winsOverride = typeof args.winsOverride === 'number' ? args.winsOverride : undefined;
+      const difficultyOverride = args.difficultyOverride as ('easy' | 'medium' | 'hard') | undefined;
+      if (difficultyOverride) {
+        gameEngine.restoreDifficultyState({
+          currentDifficulty: difficultyOverride,
+          gamesWonAtCurrentDifficulty: winsOverride ?? gameEngine.getDifficultyState().gamesWonAtCurrentDifficulty,
+          lastGameWinner: 'user',
+        });
+      } else if (winsOverride !== undefined) {
+        const currentState = gameEngine.getDifficultyState();
+        gameEngine.restoreDifficultyState({
+          currentDifficulty: currentState.currentDifficulty,
+          gamesWonAtCurrentDifficulty: winsOverride,
+          lastGameWinner: 'user',
+        });
+      }
+    }
+
     const game = gameEngine.generateGame(undefined, shouldReset);
     
     // Get new difficulty after generation (may have progressed)
     const newDifficulty = gameEngine.getDifficultyState().currentDifficulty;
-    const stateAfterGenerate = gameEngine.getDifficultyState();
-    console.log('State after generateGame:', stateAfterGenerate);
-    console.log('Game progressToNextLevel:', game.progressToNextLevel);
     
     // If difficulty progressed, update the game's previousDifficulty field
     if (previousDifficulty !== newDifficulty) {
       game.previousDifficulty = previousDifficulty;
     }
     
-    // Save progress after generating game (includes any progression)
-    const progressState = gameEngine.getDifficultyState();
-    await saveDifficultyProgress(env, progressState);
-    console.log('Saved progress:', progressState);
+    // CRITICAL: Always override progressToNextLevel from saved progress if available
+    // This is the source of truth for progress persistence
+    let finalProgress = 0;
+    
+    // If client sent a progressOverride, trust it
+    if (!shouldReset && typeof args.progressOverride === 'number') {
+      finalProgress = Math.max(0, Math.min(100, Math.round(args.progressOverride)));
+    } else if (shouldReset) {
+      // Explicitly set to 0 on reset
+      finalProgress = 0;
+    } else if (savedProgress) {
+      // ALWAYS use saved progress if it exists
+      // Calculate progress from saved state - this is the source of truth
+      finalProgress = savedProgress.currentDifficulty === 'easy' || savedProgress.currentDifficulty === 'medium'
+        ? Math.min(100, Math.round((savedProgress.gamesWonAtCurrentDifficulty / 5) * 100))
+        : 100;
+    } else {
+      // No saved progress - check GameEngine state as fallback
+      const currentState = gameEngine.getDifficultyState();
+      finalProgress = currentState.currentDifficulty === 'easy' || currentState.currentDifficulty === 'medium'
+        ? Math.min(100, Math.round((currentState.gamesWonAtCurrentDifficulty / 5) * 100))
+        : 100;
+    }
+
+    // If difficulty progressed (easy -> medium or medium -> hard), start progress at 0
+    if (previousDifficulty !== newDifficulty) {
+      finalProgress = 0;
+      // Ensure engine state reflects 0 wins at new difficulty
+      const resetState = {
+        currentDifficulty: newDifficulty,
+        gamesWonAtCurrentDifficulty: 0,
+        lastGameWinner: null as 'user' | 'ai' | 'draw' | null,
+      };
+      gameEngine.restoreDifficultyState(resetState);
+      savedProgress = resetState;
+    }
+    
+    // ALWAYS set the progress - this ensures it's never undefined or wrong
+    // Force it to be a number, not undefined
+    game.progressToNextLevel = finalProgress;
+    
+    // CRITICAL: Save progress AFTER setting it on the game
+    // Use the saved progress value if available, otherwise use GameEngine state
+    // This ensures we don't overwrite the saved progress with a reset value
+    if (shouldReset) {
+      // On reset, save fresh state (0 wins)
+      const progressState = gameEngine.getDifficultyState();
+      await saveDifficultyProgress(env, progressState);
+    } else if (savedProgress) {
+      // Keep the saved progress - don't overwrite it with GameEngine state
+      // The GameEngine state might have been reset or changed during generateGame()
+      await saveDifficultyProgress(env, savedProgress);
+    } else {
+      // No saved progress - save current GameEngine state
+      const progressState = gameEngine.getDifficultyState();
+      await saveDifficultyProgress(env, progressState);
+    }
     
     await saveGame(env, game);
-    return replyWithGame(`Created new game: ${game.id}`, game);
+    
+    // Debug: Include progress info in the response message for verification
+    const debugMsg = savedProgress 
+      ? `Progress: ${savedProgress.gamesWonAtCurrentDifficulty} wins = ${finalProgress}%`
+      : `No saved progress, using ${finalProgress}%`;
+    
+    return replyWithGame(`Created new game: ${game.id}. ${debugMsg}`, game);
   };
   
   server.registerTool(
@@ -385,7 +470,18 @@ function createMcpServer(env: Env, request: Request) {
       // Save progress if game completed
       if (result.game.isComplete) {
         const progressState = gameEngine.getDifficultyState();
+        // CRITICAL: Ensure we're saving the correct state
+        // If user won, gamesWonAtCurrentDifficulty should be > 0
+        if (result.game.winner === 'user' && progressState.gamesWonAtCurrentDifficulty === 0) {
+          // This shouldn't happen, but if it does, the state wasn't updated correctly
+          console.error('ERROR: User won but gamesWonAtCurrentDifficulty is 0!');
+        }
         await saveDifficultyProgress(env, progressState);
+        // Verify it was saved by loading it back
+        const verifyProgress = await loadDifficultyProgress(env);
+        if (verifyProgress && verifyProgress.gamesWonAtCurrentDifficulty !== progressState.gamesWonAtCurrentDifficulty) {
+          console.error('ERROR: Progress save verification failed!');
+        }
       }
       
       return replyWithGame("", result.game);

@@ -41,14 +41,14 @@ npm run deploy
 
 After deployment, you'll see a URL like:
 ```
-https://tic-tac-soccer.YOUR_SUBDOMAIN.workers.dev
+https://rabona.YOUR_SUBDOMAIN.workers.dev
 ```
 
 ## Step 6: Connect to ChatGPT
 1. Open ChatGPT
 2. Go to **Settings** > **Apps & Connectors** > **Create**
-3. Name: "Tic Tac Soccer"
-4. MCP endpoint: `https://tic-tac-soccer.YOUR_SUBDOMAIN.workers.dev/mcp`
+3. Name: "Rabona"
+4. MCP endpoint: `https://rabona.YOUR_SUBDOMAIN.workers.dev/mcp`
 5. Authentication: **No authentication**
 6. Click **Create**
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-    <title>Tic Tac Soccer</title>
+    <title>Rabona</title>
     <!-- Google Fonts - Poppins -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1210,7 +1210,7 @@
 
     <script type="module">
       /**
-       * OpenAI Apps SDK Widget - Tic Tac Soccer Game
+       * OpenAI Apps SDK Widget - Rabona Game
        * 
        * This widget follows OpenAI Apps SDK best practices:
        * 1. Widget state is the source of truth (window.openai.widgetState)
@@ -2155,6 +2155,46 @@
         return { imagePath, text };
       };
 
+      // Track maximum progress seen for current difficulty (prevents progress bar from shrinking)
+      // Store in widget state to persist across game updates
+      function getMaxProgressForDifficulty(difficulty) {
+        const widgetState = window.openai?.widgetState;
+        let state = {};
+        if (widgetState) {
+          if (typeof widgetState === 'string') {
+            try {
+              state = JSON.parse(widgetState);
+            } catch (e) {
+              state = {};
+            }
+          } else if (typeof widgetState === 'object') {
+            state = widgetState;
+          }
+        }
+        return state.maxProgress?.[difficulty] || 0;
+      }
+
+      function setMaxProgressForDifficulty(difficulty, progress) {
+        const widgetState = window.openai?.widgetState;
+        let state = {};
+        if (widgetState) {
+          if (typeof widgetState === 'string') {
+            try {
+              state = JSON.parse(widgetState);
+            } catch (e) {
+              state = {};
+            }
+          } else if (typeof widgetState === 'object') {
+            state = widgetState;
+          }
+        }
+        if (!state.maxProgress) {
+          state.maxProgress = {};
+        }
+        state.maxProgress[difficulty] = Math.max(state.maxProgress[difficulty] || 0, progress);
+        updateWidgetState({ maxProgress: state.maxProgress });
+      }
+
       // Render difficulty badge
       // Render difficulty progress slider
       const renderDifficultySlider = () => {
@@ -2169,8 +2209,44 @@
         }
 
         const difficulty = game.difficulty || 'easy';
-        const progress = game.progressToNextLevel || 0;
+        const newProgress = game.progressToNextLevel || 0;
         const previousDifficulty = game.previousDifficulty;
+        
+        // Get current max progress from widget state (persists across updates)
+        let maxProgressForCurrentDifficulty = getMaxProgressForDifficulty(difficulty);
+        
+        // Also check current DOM width as fallback (in case widget state was lost)
+        const currentWidth = parseFloat(sliderFill.style.width) || 0;
+        
+        // Initialize max progress from DOM width if widget state is 0 but DOM shows progress
+        // This handles cases where widget state was reset but DOM still has the progress
+        if (maxProgressForCurrentDifficulty === 0 && currentWidth > 0 && !previousDifficulty) {
+          maxProgressForCurrentDifficulty = currentWidth;
+          setMaxProgressForDifficulty(difficulty, currentWidth);
+        }
+        
+        // Reset max progress ONLY if difficulty actually changed (level up or explicit reset)
+        if (previousDifficulty && previousDifficulty !== difficulty) {
+          // Difficulty changed - reset progress for new difficulty
+          maxProgressForCurrentDifficulty = 0;
+          setMaxProgressForDifficulty(difficulty, 0);
+        }
+        
+        // Track maximum progress for current difficulty (never shrink)
+        // IMPORTANT: Only update max if newProgress is greater than 0 AND greater than current max
+        // This prevents draws/losses (progressToNextLevel = 0) from resetting the max
+        if (newProgress > 0 && newProgress > maxProgressForCurrentDifficulty) {
+          maxProgressForCurrentDifficulty = newProgress;
+          setMaxProgressForDifficulty(difficulty, maxProgressForCurrentDifficulty);
+        }
+        
+        // Use the maximum of: saved max progress, current DOM width, or new progress (if > 0)
+        // This ensures we never shrink below what we've already achieved
+        const progress = Math.max(
+          maxProgressForCurrentDifficulty,
+          currentWidth, // Preserve current visual progress
+          newProgress > 0 ? newProgress : 0 // Only use newProgress if it's positive
+        );
         
         const difficultyLabels = {
           easy: 'Easy',
@@ -2193,18 +2269,23 @@
         
         // Check if difficulty changed (for transition)
         if (previousDifficulty && previousDifficulty !== difficulty) {
-          // Reset progress and animate
+          // Reset progress to 0 when difficulty changes (level up)
+          maxProgressForCurrentDifficulty = 0;
           sliderFill.style.width = '0%';
           setTimeout(() => {
             sliderFill.style.width = `${progress}%`;
           }, 100);
         } else {
-          // Smooth update to new progress value
-          sliderFill.style.width = `${progress}%`;
+          // Always update to the maximum progress we've seen (never shrink)
+          const currentWidth = parseFloat(sliderFill.style.width) || 0;
+          if (progress > currentWidth) {
+            sliderFill.style.width = `${progress}%`;
+          }
+          // If progress is same or less, keep current width (don't shrink)
         }
 
         // Debug logging (can be removed later)
-        console.log(`Progress: ${progress}% (Difficulty: ${difficulty})`);
+        console.log(`Progress: ${progress}% (Difficulty: ${difficulty}, New from server: ${newProgress}%, Max tracked: ${maxProgressForCurrentDifficulty}%)`);
 
         sliderContainer.style.display = 'block';
       };
@@ -2350,7 +2431,7 @@
                 // Create img element to fill the entire cell
                 const img = document.createElement('img');
                 img.src = logoPath;
-                img.alt = 'Tic Tac Soccer Logo';
+                img.alt = 'Rabona Logo';
                 // Logo fills entire cell
                 img.style.cssText = 'width:100%;height:100%;object-fit:cover;object-position:center;z-index:1;position:absolute;top:0;left:0;border:0;outline:0;';
                 
@@ -2999,29 +3080,102 @@
         drawModal.classList.add('active');
       }
 
-      // Play again - use sendFollowUpMessage to send "create game" message and exit widget
+      // Play again - use sendFollowUpMessage to send "create game" message
+      // The widget will stay open and automatically update when the tool returns the new game
+      // If user lost, send message to reset difficulty to Easy
       async function playAgain() {
-        // Close lose modal
+        // Close modals
         const loseModal = document.querySelector("#loseModal");
+        const drawModal = document.querySelector("#drawModal");
+        const userLost = loseModal.classList.contains('active'); // Check if lose modal was active
         loseModal.classList.remove('active');
+        drawModal.classList.remove('active');
         
         try {
           // Use sendFollowUpMessage to send "create game" as a text message
+          // The AI will interpret this and call the create_game tool
+          // The widget's existing listeners will detect the new game in toolOutput
           if (window.openai?.sendFollowUpMessage && typeof window.openai.sendFollowUpMessage === 'function') {
-            await window.openai.sendFollowUpMessage({ prompt: "create game" });
+            // Send different messages based on game outcome
+            if (userLost && game && game.winner === 'ai') {
+              // User lost - ask to reset difficulty to Easy
+              await window.openai.sendFollowUpMessage({ prompt: "create game and reset difficulty to easy" });
+            } else {
+              // Draw or other - just create a new game
+              await window.openai.sendFollowUpMessage({ prompt: "create game" });
+            }
           } else {
-            console.warn('sendFollowUpMessage not available');
+            console.warn('sendFollowUpMessage not available, falling back to direct MCP call');
+            // Fallback: directly call MCP if sendFollowUpMessage is not available
+            if (!game) return;
+            
+            const baseUrl = window.MCP_SERVER_URL || window.location.origin;
+            const mcpUrl = `${baseUrl}/mcp`;
+
+            let createGameArgs = {};
+            if (userLost && game.winner === 'ai') {
+              // User lost - reset difficulty to Easy
+              createGameArgs = { resetDifficulty: true };
+            } else if (game.winner === 'draw') {
+              // Draw - keep current difficulty but reset progress
+              const currentDifficulty = game.difficulty || 'easy';
+              createGameArgs = {
+                progressOverride: 0,
+                winsOverride: 0,
+                difficultyOverride: currentDifficulty
+              };
+            } else {
+              // Fallback: keep current state
+              const currentProgress = game.progressToNextLevel || 0;
+              const currentDifficulty = game.difficulty || 'easy';
+              createGameArgs = {
+                progressOverride: currentProgress,
+                difficultyOverride: currentDifficulty
+              };
+            }
+
+            const response = await fetch(mcpUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'tools/call',
+                params: {
+                  name: 'create_game',
+                  arguments: createGameArgs
+                },
+                id: Date.now()
+              })
+            });
+
+            const data = await response.json();
+            let gameData = null;
+            if (data.result?.structuredContent?.game) {
+              gameData = data.result.structuredContent.game;
+            } else if (data.result?.content && Array.isArray(data.result.content)) {
+              for (const item of data.result.content) {
+                if (item.structuredContent?.game) {
+                  gameData = item.structuredContent.game;
+                  break;
+                }
+              }
+            }
+
+            if (gameData) {
+              game = gameData;
+              updateWidgetState({ game });
+              render();
+            } else {
+              console.error('Failed to create new game');
+            }
           }
         } catch (error) {
           console.error('Error sending follow-up message:', error);
         }
         
-        // Exit widget after sending message
-        if (window.openai?.requestClose && typeof window.openai.requestClose === 'function') {
-          window.openai.requestClose();
-        } else if (window.openai?.closeWidget && typeof window.openai.closeWidget === 'function') {
-          window.openai.closeWidget();
-        }
+        // Widget stays open - existing listeners will detect the new game when tool returns
       }
 
       // Exit lose modal - close widget and reset difficulty for future players

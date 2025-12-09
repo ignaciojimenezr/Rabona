@@ -33,13 +33,13 @@ This runs `wrangler deploy` which builds and deploys your app.
 ### Step 5: Get Your Deployment URL
 After deployment, wrangler will show you a URL like:
 ```
-https://tic-tac-soccer.YOUR_SUBDOMAIN.workers.dev
+https://rabona.YOUR_SUBDOMAIN.workers.dev
 ```
 
 ### Step 6: Connect to ChatGPT
 1. Open ChatGPT
 2. Go to **Settings** > **Apps & Connectors** > **Create**
-3. Enter your MCP endpoint: `https://tic-tac-soccer.YOUR_SUBDOMAIN.workers.dev/mcp`
+3. Enter your MCP endpoint: `https://rabona.YOUR_SUBDOMAIN.workers.dev/mcp`
 4. Select **"No authentication"**
 5. Click **"Create"**
 

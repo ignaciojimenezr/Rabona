@@ -587,29 +587,19 @@ export class GameEngine {
       const uniqueValues = new Set(allValues);
       let allCombinationsValid = allValues.length === uniqueValues.size; // No duplicates
       
-      // Also verify no duplicate values within rows when same type (extra safety)
+      // Also verify no duplicate values within rows (prevent any duplicates, regardless of type)
       if (allCombinationsValid) {
-        for (let i = 0; i < 3; i++) {
-          for (let j = i + 1; j < 3; j++) {
-            if (rowCategoryTypes[i] === rowCategoryTypes[j] && testRowValues[i] === testRowValues[j]) {
-              allCombinationsValid = false;
-              break;
-            }
-          }
-          if (!allCombinationsValid) break;
+        const rowValueSet = new Set(testRowValues);
+        if (rowValueSet.size !== testRowValues.length) {
+          allCombinationsValid = false;
         }
       }
       
-      // Verify no duplicate values within columns when same type (extra safety)
+      // Verify no duplicate values within columns (prevent any duplicates, regardless of type)
       if (allCombinationsValid) {
-        for (let i = 0; i < 3; i++) {
-          for (let j = i + 1; j < 3; j++) {
-            if (columnCategoryTypes[i] === columnCategoryTypes[j] && testColumnValues[i] === testColumnValues[j]) {
-              allCombinationsValid = false;
-              break;
-            }
-          }
-          if (!allCombinationsValid) break;
+        const colValueSet = new Set(testColumnValues);
+        if (colValueSet.size !== testColumnValues.length) {
+          allCombinationsValid = false;
         }
       }
 
@@ -757,29 +747,19 @@ export class GameEngine {
         const uniqueValues = new Set(allValues);
         let allValid = allValues.length === uniqueValues.size; // No duplicates
         
-        // Also verify no duplicate values within rows when same type (extra safety)
+        // Also verify no duplicate values within rows (prevent any duplicates, regardless of type)
         if (allValid) {
-          for (let i = 0; i < 3; i++) {
-            for (let j = i + 1; j < 3; j++) {
-              if (rowCategoryTypes[i] === rowCategoryTypes[j] && testRowValues[i] === testRowValues[j]) {
-                allValid = false;
-                break;
-              }
-            }
-            if (!allValid) break;
+          const rowValueSet = new Set(testRowValues);
+          if (rowValueSet.size !== testRowValues.length) {
+            allValid = false;
           }
         }
         
-        // Verify no duplicate values within columns when same type (extra safety)
+        // Verify no duplicate values within columns (prevent any duplicates, regardless of type)
         if (allValid) {
-          for (let i = 0; i < 3; i++) {
-            for (let j = i + 1; j < 3; j++) {
-              if (columnCategoryTypes[i] === columnCategoryTypes[j] && testColumnValues[i] === testColumnValues[j]) {
-                allValid = false;
-                break;
-              }
-            }
-            if (!allValid) break;
+          const colValueSet = new Set(testColumnValues);
+          if (colValueSet.size !== testColumnValues.length) {
+            allValid = false;
           }
         }
         
@@ -1001,16 +981,33 @@ export class GameEngine {
       }
       
       // If we still couldn't find valid combinations, use fallback (first available values)
+      // But ensure no duplicates even in fallback
       if (!foundValid) {
         rowCategoryValues = [];
         columnCategoryValues = [];
+        const usedValues = new Set<string>();
+        
         for (const catType of rowCategoryTypes) {
           const values = this.getCategoryValuesByDifficulty(catType);
-          if (values.length > 0) rowCategoryValues.push(values[0].value);
+          // Find first value that hasn't been used yet
+          for (const valueItem of values) {
+            if (!usedValues.has(valueItem.value)) {
+              rowCategoryValues.push(valueItem.value);
+              usedValues.add(valueItem.value);
+              break;
+            }
+          }
         }
         for (const catType of columnCategoryTypes) {
           const values = this.getCategoryValuesByDifficulty(catType);
-          if (values.length > 0) columnCategoryValues.push(values[0].value);
+          // Find first value that hasn't been used yet
+          for (const valueItem of values) {
+            if (!usedValues.has(valueItem.value)) {
+              columnCategoryValues.push(valueItem.value);
+              usedValues.add(valueItem.value);
+              break;
+            }
+          }
         }
       }
     }

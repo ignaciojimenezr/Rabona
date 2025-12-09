@@ -176,7 +176,7 @@ async function loadGameHtml(env: Env, request: Request): Promise<string> {
   }
   
   // Fallback: return basic HTML
-  return `<!DOCTYPE html><html><head><title>Tic Tac Soccer</title></head><body><h1>Tic Tac Soccer</h1><p>Widget loading...</p></body></html>`;
+  return `<!DOCTYPE html><html><head><title>Rabona</title></head><body><h1>Rabona</h1><p>Widget loading...</p></body></html>`;
 }
 
 // Cache widget HTML to avoid reloading on every request
@@ -205,7 +205,7 @@ let registryPopulated = false;
 // Create MCP server
 function createMcpServer(env: Env, request: Request) {
   const server = new McpServer({
-    name: "tic-tac-soccer",
+    name: "rabona",
     version: "1.0.0",
   });
   
@@ -768,7 +768,7 @@ async function handleMcpRequest(env: Env, request: Request): Promise<Response> {
           protocolVersion: "2024-11-05",
           capabilities: {},
           serverInfo: {
-            name: "tic-tac-soccer",
+            name: "rabona",
             version: "1.0.0",
           },
         },
@@ -806,7 +806,7 @@ async function handleMcpRequest(env: Env, request: Request): Promise<Response> {
             resources: { subscribe: true, listChanged: true },
           },
           serverInfo: {
-            name: "tic-tac-soccer",
+            name: "rabona",
             version: "1.0.0",
           },
         },
@@ -1010,7 +1010,7 @@ export default {
 
     // Health check
     if (method === "GET" && path === "/") {
-      return new Response("Tic Tac Soccer MCP server", {
+      return new Response("Rabona MCP server", {
         headers: { "Content-Type": "text/plain" },
       });
     }
@@ -1134,7 +1134,7 @@ export default {
           widgets: [
             {
               id: "game-widget",
-              name: "Tic Tac Soccer Game",
+              name: "Rabona Game",
               description: "Play tic-tac-toe with soccer players",
               url: "ui://widget/game-widget.html",
             },

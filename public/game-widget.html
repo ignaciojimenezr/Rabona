@@ -2215,15 +2215,8 @@
         // Get current max progress from widget state (persists across updates)
         let maxProgressForCurrentDifficulty = getMaxProgressForDifficulty(difficulty);
         
-        // Also check current DOM width as fallback (in case widget state was lost)
+        // Check current DOM width as fallback (in case widget state was lost)
         const currentWidth = parseFloat(sliderFill.style.width) || 0;
-        
-        // Initialize max progress from DOM width if widget state is 0 but DOM shows progress
-        // This handles cases where widget state was reset but DOM still has the progress
-        if (maxProgressForCurrentDifficulty === 0 && currentWidth > 0 && !previousDifficulty) {
-          maxProgressForCurrentDifficulty = currentWidth;
-          setMaxProgressForDifficulty(difficulty, currentWidth);
-        }
         
         // Reset max progress ONLY if difficulty actually changed (level up or explicit reset)
         if (previousDifficulty && previousDifficulty !== difficulty) {
@@ -2240,13 +2233,24 @@
           setMaxProgressForDifficulty(difficulty, maxProgressForCurrentDifficulty);
         }
         
-        // Use the maximum of: saved max progress, current DOM width, or new progress (if > 0)
-        // This ensures we never shrink below what we've already achieved
-        const progress = Math.max(
-          maxProgressForCurrentDifficulty,
-          currentWidth, // Preserve current visual progress
-          newProgress > 0 ? newProgress : 0 // Only use newProgress if it's positive
-        );
+        // Determine final progress to display
+        // Priority: 1) Server value if > 0, 2) Saved max progress, 3) DOM width (only if we have saved progress)
+        let progress = 0;
+        
+        if (newProgress > 0) {
+          // Server says we have progress - use it (and update max)
+          progress = newProgress;
+        } else if (maxProgressForCurrentDifficulty > 0) {
+          // No new progress from server, but we have saved max progress - use it
+          // This preserves progress after draws/losses
+          progress = maxProgressForCurrentDifficulty;
+        } else if (currentWidth > 0 && maxProgressForCurrentDifficulty > 0) {
+          // Fallback: DOM width only if we also have saved progress (prevents stale DOM values on first game)
+          progress = Math.max(currentWidth, maxProgressForCurrentDifficulty);
+        } else {
+          // First game or no progress - use server value (0)
+          progress = newProgress;
+        }
         
         const difficultyLabels = {
           easy: 'Easy',

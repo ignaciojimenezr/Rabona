@@ -27,7 +27,12 @@ const gameEngine = new GameEngine(squadStore);
 // Helper to create tool response with game state for widget
 const replyWithGame = (message: string, game: Game) => {
   return {
-    content: [], // Empty content keeps widget visible
+    content: [
+      {
+        type: "text",
+        text: message,
+      },
+    ],
     structuredContent: { game },
   };
 };

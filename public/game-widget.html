@@ -3084,8 +3084,8 @@
         drawModal.classList.add('active');
       }
 
-      // Play again - use sendFollowUpMessage to send "create game" message
-      // The widget will stay open and automatically update when the tool returns the new game
+      // Play again - keep widget open and use sendFollowUpMessage to create a new game
+      // The widget will automatically update when the new game is detected
       // If user lost, send message to reset difficulty to Easy
       async function playAgain() {
         // Close modals
@@ -3095,10 +3095,13 @@
         loseModal.classList.remove('active');
         drawModal.classList.remove('active');
         
+        // Store current game ID to detect when new game arrives
+        const currentGameId = game?.id;
+        
         try {
           // Use sendFollowUpMessage to send "create game" as a text message
           // The AI will interpret this and call the create_game tool
-          // The widget's existing listeners will detect the new game in toolOutput
+          // The widget's existing listeners will detect the new game in toolOutput and update automatically
           if (window.openai?.sendFollowUpMessage && typeof window.openai.sendFollowUpMessage === 'function') {
             // Send different messages based on game outcome
             if (userLost && game && game.winner === 'ai') {
@@ -3108,6 +3111,34 @@
               // Draw or other - just create a new game
               await window.openai.sendFollowUpMessage({ prompt: "create game" });
             }
+            
+            // Actively poll for new game (more frequent than normal 2s interval)
+            // This ensures we detect the new game as soon as it's available
+            let checkCount = 0;
+            const maxChecks = 30; // Check for up to 30 seconds
+            const checkInterval = setInterval(() => {
+              checkCount++;
+              
+              // Check tool output for new game
+              const structuredContent = window.openai?.toolOutput?.structuredContent;
+              if (structuredContent?.game) {
+                const newGame = structuredContent.game;
+                // If we got a new game (different ID), update and stop polling
+                if (newGame.id !== currentGameId) {
+                  game = newGame;
+                  updateWidgetState({ game });
+                  render();
+                  clearInterval(checkInterval);
+                  return;
+                }
+              }
+              
+              // Stop polling after max checks
+              if (checkCount >= maxChecks) {
+                clearInterval(checkInterval);
+              }
+            }, 500); // Check every 500ms (more frequent than normal 2s interval)
+            
           } else {
             console.warn('sendFollowUpMessage not available, falling back to direct MCP call');
             // Fallback: directly call MCP if sendFollowUpMessage is not available
@@ -3176,10 +3207,8 @@
             }
           }
         } catch (error) {
-          console.error('Error sending follow-up message:', error);
+          console.error('Error closing widget or sending follow-up message:', error);
         }
-        
-        // Widget stays open - existing listeners will detect the new game when tool returns
       }
 
       // Exit lose modal - close widget and reset difficulty for future players

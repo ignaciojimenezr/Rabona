@@ -1,38 +1,38 @@
 {
-  "name": "openai-app-sdk",
+  "name": "rabona",
   "version": "1.0.0",
-  "description": "SDK for building OpenAI Apps with widgets, tools, and HTTP endpoints",
-  "main": "dist/index.js",
+  "description": "Rabona - A soccer-themed tic-tac-toe game built as an OpenAI App with Cloudflare Workers",
+  "main": "src/worker.ts",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/mcp-server.ts",
-    "start": "node dist/mcp-server.js",
+    "build": "npm run bundle-data && tsc",
+    "bundle-data": "node scripts/bundle-data.js",
+    "dev": "npm run bundle-data && wrangler dev",
+    "deploy": "npm run bundle-data && wrangler deploy",
     "type-check": "tsc --noEmit"
   },
   "keywords": [
     "openai",
-    "sdk",
-    "app",
-    "actions",
-    "tools",
-    "widgets"
+    "openai-apps",
+    "tic-tac-toe",
+    "soccer",
+    "football",
+    "cloudflare-workers",
+    "mcp",
+    "model-context-protocol",
+    "game"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.23.0",
-    "cors": "^2.8.5",
     "csv-parse": "^5.5.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
+    "@cloudflare/workers-types": "^4.20241106.0",
     "@types/node": "^20.10.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "wrangler": "^4.53.0"
   }
 }

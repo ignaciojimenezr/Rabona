@@ -23,6 +23,9 @@ export interface Game {
   winner: 'user' | 'ai' | 'draw' | null;
   isComplete: boolean;
   size: number; // 4 for 4x4 grid
+  difficulty: 'easy' | 'medium' | 'hard'; // Current difficulty level
+  previousDifficulty?: 'easy' | 'medium' | 'hard'; // Previous difficulty (for transitions)
+  progressToNextLevel?: number; // Progress percentage (0-100) toward next difficulty level
   createdAt: Date;
 }
 
@@ -32,14 +35,72 @@ export interface Game {
  */
 export class GameEngine {
   private squadStore: SquadStore;
-  private recentPlayers: string[] = []; // FIFO queue of recently used player IDs (Name + Team for uniqueness) - resets on loss
-  private recentCombinations: string[] = []; // FIFO queue of recently used player combinations (rowCategory|columnCategory|playerId) - hardcoded limit
-  private currentDifficulty: 'easy' | 'medium' | 'hard' = 'easy';
+  // Shuffled player pools by priority level - reshuffled when exhausted
+  private shuffledPriority1Players: PlayerRecord[] = [];
+  private shuffledPriority2Players: PlayerRecord[] = [];
+  private shuffledPriority3Players: PlayerRecord[] = [];
+  private shuffledAllPlayers: PlayerRecord[] = [];
+  // Current indices in shuffled arrays
+  private priority1Index: number = 0;
+  private priority2Index: number = 0;
+  private priority3Index: number = 0;
+  private allPlayersIndex: number = 0;
+  private currentDifficulty: 'easy' | 'medium' | 'hard' = 'easy'; // Track difficulty across games - progresses after 5 wins
+  private lastGameDifficulty: 'easy' | 'medium' | 'hard' | null = null; // Track last game's difficulty for transitions
   private lastGameWinner: 'user' | 'ai' | 'draw' | null = null; // Track last game result to reset players on loss
-  private readonly MAX_RECENT_COMBINATIONS = 15; // Hardcoded: Track last 15 combinations to avoid same 3-player groups
+  private gamesWonAtCurrentDifficulty: number = 0; // Track wins at current difficulty (5 wins = progress)
 
   constructor(squadStore: SquadStore) {
     this.squadStore = squadStore;
+    this.initializeShuffledPlayers();
+  }
+
+  /**
+   * Initialize shuffled player pools by priority level
+   */
+  private initializeShuffledPlayers(): void {
+    const allPlayers = this.squadStore.getAll();
+    this.shuffledPriority1Players = this.shuffle(allPlayers.filter(p => this.getPlayerPriority(p) === 1));
+    this.shuffledPriority2Players = this.shuffle(allPlayers.filter(p => this.getPlayerPriority(p) === 2));
+    this.shuffledPriority3Players = this.shuffle(allPlayers.filter(p => this.getPlayerPriority(p) === 3));
+    this.shuffledAllPlayers = this.shuffle([...allPlayers]);
+    this.priority1Index = 0;
+    this.priority2Index = 0;
+    this.priority3Index = 0;
+    this.allPlayersIndex = 0;
+  }
+
+  /**
+   * Get next player from shuffled pool by priority, reshuffling if exhausted
+   */
+  private getNextShuffledPlayer(priority: 1 | 2 | 3 | null = null): PlayerRecord | null {
+    if (priority === 1) {
+      if (this.priority1Index >= this.shuffledPriority1Players.length) {
+        // Reshuffle when exhausted
+        this.shuffledPriority1Players = this.shuffle([...this.shuffledPriority1Players]);
+        this.priority1Index = 0;
+      }
+      return this.shuffledPriority1Players[this.priority1Index++];
+    } else if (priority === 2) {
+      if (this.priority2Index >= this.shuffledPriority2Players.length) {
+        this.shuffledPriority2Players = this.shuffle([...this.shuffledPriority2Players]);
+        this.priority2Index = 0;
+      }
+      return this.shuffledPriority2Players[this.priority2Index++];
+    } else if (priority === 3) {
+      if (this.priority3Index >= this.shuffledPriority3Players.length) {
+        this.shuffledPriority3Players = this.shuffle([...this.shuffledPriority3Players]);
+        this.priority3Index = 0;
+      }
+      return this.shuffledPriority3Players[this.priority3Index++];
+    } else {
+      // All players
+      if (this.allPlayersIndex >= this.shuffledAllPlayers.length) {
+        this.shuffledAllPlayers = this.shuffle([...this.shuffledAllPlayers]);
+        this.allPlayersIndex = 0;
+      }
+      return this.shuffledAllPlayers[this.allPlayersIndex++];
+    }
   }
 
   /**
@@ -79,7 +140,57 @@ export class GameEngine {
   }
 
   /**
+   * Check if a category value has an image available (based on widget image mappings)
+   */
+  private hasCategoryImage(categoryType: CategoryType, categoryValue: string): boolean {
+    if (categoryType === 'Position') {
+      // All positions have images (Goalkeeper.webp or Soccer_Player.png)
+      return true;
+    }
+    
+    if (categoryType === 'Shirt Number') {
+      // Shirt numbers always have Shirt_Number.png
+      return true;
+    }
+    
+    if (categoryType === 'Team') {
+      // Only teams with logos
+      const teamsWithImages = [
+        'FC Barcelona',
+        'Real Madrid',
+        'Atletico Madrid',
+        'Manchester City',
+        'Manchester United',
+        'Chelsea',
+        'Liverpool',
+        'Arsenal',
+        'Tottenham Hotspur',
+        'Bayern Munich'
+      ];
+      return teamsWithImages.includes(categoryValue);
+    }
+    
+    if (categoryType === 'Country') {
+      // Only countries with flag images
+      const countriesWithImages = [
+        'ESP', 'ENG', 'GER', 'FRA', 'ITA', 'BRA', 'ARG', 'POR', 'BEL', 'NED',
+        'NOR', 'SWE', 'URU', 'POL', 'DEN', 'USA', 'SVN', 'SVK', 'KOR', 'UZB'
+      ];
+      return countriesWithImages.includes(categoryValue);
+    }
+    
+    if (categoryType === 'League') {
+      // Only leagues with logos
+      const leaguesWithImages = ['LaLiga', 'Premier League', 'Bayern'];
+      return leaguesWithImages.includes(categoryValue);
+    }
+    
+    return false;
+  }
+
+  /**
    * Get all unique values for a category type, sorted by match availability (easy first)
+   * Only returns categories that have images available
    */
   private getCategoryValuesByDifficulty(categoryType: CategoryType): Array<{ value: string; difficulty: number; matchCount: number }> {
     const allPlayers = this.squadStore.getAll();
@@ -88,13 +199,13 @@ export class GameEngine {
     // Count matches for each category value
     for (const player of allPlayers) {
       const value = this.getCategoryValue(player, categoryType);
-      if (value) {
+      if (value && this.hasCategoryImage(categoryType, value)) {
         valueMap.set(value, (valueMap.get(value) || 0) + 1);
       }
     }
 
     // Convert to array with difficulty scores
-    return Array.from(valueMap.entries())
+    const result = Array.from(valueMap.entries())
       .map(([value, matchCount]) => ({
         value,
         difficulty: this.getCategoryDifficulty(categoryType, value),
@@ -107,6 +218,13 @@ export class GameEngine {
         }
         return b.matchCount - a.matchCount;
       });
+
+    // Filter out "Bundesliga" from League categories - we only use Bayern Munich as a Team category
+    if (categoryType === 'League') {
+      return result.filter(item => item.value !== 'Bundesliga');
+    }
+
+    return result;
   }
 
   /**
@@ -117,157 +235,229 @@ export class GameEngine {
   }
 
   /**
-   * Check if a player was recently used (to avoid immediate repeats)
-   */
-  private isPlayerRecentlyUsed(player: PlayerRecord): boolean {
-    const playerId = this.getPlayerId(player);
-    return this.recentPlayers.includes(playerId);
-  }
-
-  /**
-   * Reset recent players queue (called when user loses a game)
+   * Reset shuffled players (called when user loses a game or difficulty changes)
    */
   private resetRecentPlayers(): void {
-    this.recentPlayers = [];
+    // Reshuffle all player pools to start fresh
+    this.initializeShuffledPlayers();
+    // Don't reset used players sets - we track across games for progress
   }
 
+  // Removed combination tracking - we now use shuffled pools instead
+
   /**
-   * Add a player to the recent players queue (FIFO)
-   * No hardcoded limit - queue grows until reset on loss
+   * Get next matching player from shuffled pool
+   * Returns the first player from the shuffled pool that matches the criteria
    */
-  private markPlayerRecentlyUsed(player: PlayerRecord): void {
-    const playerId = this.getPlayerId(player);
+  private getNextMatchingPlayerFromShuffled(
+    matchingPlayers: PlayerRecord[],
+    priority: 1 | 2 | 3 | null,
+    difficulty: 'easy' | 'medium' | 'hard'
+  ): PlayerRecord | null {
+    // Create a set of matching player IDs for fast lookup
+    const matchingPlayerIds = new Set(matchingPlayers.map(p => this.getPlayerId(p)));
     
-    // Remove if already exists (to avoid duplicates)
-    const index = this.recentPlayers.indexOf(playerId);
-    if (index !== -1) {
-      this.recentPlayers.splice(index, 1);
+    // Determine which shuffled pool to use based on priority
+    let shuffledPool: PlayerRecord[] = [];
+    let poolIndexRef: { value: number } = { value: 0 };
+    
+    if (priority === 1) {
+      shuffledPool = this.shuffledPriority1Players;
+      poolIndexRef = { value: this.priority1Index };
+    } else if (priority === 2) {
+      shuffledPool = this.shuffledPriority2Players;
+      poolIndexRef = { value: this.priority2Index };
+    } else if (priority === 3) {
+      shuffledPool = this.shuffledPriority3Players;
+      poolIndexRef = { value: this.priority3Index };
+    } else {
+      shuffledPool = this.shuffledAllPlayers;
+      poolIndexRef = { value: this.allPlayersIndex };
     }
     
-    // Add to end (most recent)
-    this.recentPlayers.push(playerId);
-    // No size limit - queue grows until reset on loss
-  }
-
-  /**
-   * Create a combination key for a player in a specific cell (row category + column category + player)
-   */
-  private createCombinationKey(
-    rowCategoryType: CategoryType,
-    rowCategoryValue: string,
-    columnCategoryType: CategoryType,
-    columnCategoryValue: string,
-    player: PlayerRecord
-  ): string {
-    const playerId = this.getPlayerId(player);
-    return `${rowCategoryType}:${rowCategoryValue}|${columnCategoryType}:${columnCategoryValue}|${playerId}`;
-  }
-
-  /**
-   * Check if a player combination was recently used (same player in same row/column category combo)
-   */
-  private isCombinationRecentlyUsed(
-    rowCategoryType: CategoryType,
-    rowCategoryValue: string,
-    columnCategoryType: CategoryType,
-    columnCategoryValue: string,
-    player: PlayerRecord
-  ): boolean {
-    const key = this.createCombinationKey(rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue, player);
-    return this.recentCombinations.includes(key);
-  }
-
-  /**
-   * Mark a player combination as recently used (FIFO)
-   */
-  private markCombinationRecentlyUsed(
-    rowCategoryType: CategoryType,
-    rowCategoryValue: string,
-    columnCategoryType: CategoryType,
-    columnCategoryValue: string,
-    player: PlayerRecord
-  ): void {
-    const key = this.createCombinationKey(rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue, player);
+    // Search from current index forward, wrapping around if needed
+    const startIndex = poolIndexRef.value;
+    let attempts = 0;
+    const maxAttempts = shuffledPool.length;
     
-    // Remove if already exists (to avoid duplicates)
-    const index = this.recentCombinations.indexOf(key);
-    if (index !== -1) {
-      this.recentCombinations.splice(index, 1);
-    }
-    
-    // Add to end (most recent)
-    this.recentCombinations.push(key);
-    
-    // Maintain FIFO size limit - remove oldest entries from front
-    if (this.recentCombinations.length > this.MAX_RECENT_COMBINATIONS) {
-      this.recentCombinations.shift(); // Remove oldest (first) entry
-    }
-  }
-
-  /**
-   * Filter players by both recent use and recent combinations
-   * Returns players sorted by preference: unused players not in recent combinations > unused players > used players not in combinations > used players
-   */
-  private filterPlayersByRecentUse(
-    players: PlayerRecord[],
-    rowCategoryType: CategoryType,
-    rowCategoryValue: string,
-    columnCategoryType: CategoryType,
-    columnCategoryValue: string
-  ): {
-    best: PlayerRecord[];      // Not recently used AND not in recent combinations
-    good: PlayerRecord[];       // Not recently used BUT in recent combinations
-    okay: PlayerRecord[];       // Recently used BUT not in recent combinations
-    fallback: PlayerRecord[];  // Recently used AND in recent combinations
-  } {
-    const best: PlayerRecord[] = [];
-    const good: PlayerRecord[] = [];
-    const okay: PlayerRecord[] = [];
-    const fallback: PlayerRecord[] = [];
-    
-    for (const player of players) {
-      const isPlayerRecent = this.isPlayerRecentlyUsed(player);
-      const isCombinationRecent = this.isCombinationRecentlyUsed(
-        rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue, player
-      );
+    while (attempts < maxAttempts) {
+      const currentIndex = (startIndex + attempts) % shuffledPool.length;
+      const player = shuffledPool[currentIndex];
       
-      if (!isPlayerRecent && !isCombinationRecent) {
-        best.push(player);
-      } else if (!isPlayerRecent && isCombinationRecent) {
-        good.push(player);
-      } else if (isPlayerRecent && !isCombinationRecent) {
-        okay.push(player);
+      if (matchingPlayerIds.has(this.getPlayerId(player))) {
+        // Found a match - update the index for next time
+        const nextIndex = (currentIndex + 1) % shuffledPool.length;
+        if (priority === 1) {
+          this.priority1Index = nextIndex;
+        } else if (priority === 2) {
+          this.priority2Index = nextIndex;
+        } else if (priority === 3) {
+          this.priority3Index = nextIndex;
       } else {
-        fallback.push(player);
+          this.allPlayersIndex = nextIndex;
+        }
+        return player;
       }
+      
+      attempts++;
     }
     
-    return { best, good, okay, fallback };
+    // No match found in shuffled pool - return null (caller will handle fallback)
+    return null;
+  }
+
+  // Removed getCurrentDifficulty - each game is independent, always starts at easy
+
+  /**
+   * Calculate progress toward next difficulty level (0-100)
+   * Based on games won - 5 wins per difficulty level
+   */
+  private calculateProgressToNextLevel(): number {
+    if (this.currentDifficulty === 'easy' || this.currentDifficulty === 'medium') {
+      // 5 wins per level = 20% per win
+      const progress = Math.min(100, (this.gamesWonAtCurrentDifficulty / 5) * 100);
+      const rounded = Math.round(progress);
+      console.log(`GameEngine: calculateProgressToNextLevel - gamesWon=${this.gamesWonAtCurrentDifficulty}, difficulty=${this.currentDifficulty}, progress=${rounded}%`);
+      return rounded;
+    }
+    
+    return 100; // Hard is max, always at 100%
   }
 
   /**
-   * Get the current difficulty level, automatically progressing if needed
+   * Check if we should progress to next difficulty level
+   * Progresses when: user wins 5 games at current difficulty
    */
-  private getCurrentDifficulty(): 'easy' | 'medium' | 'hard' {
-    // Simple progression - can be enhanced later if needed
-    return this.currentDifficulty;
+  private shouldProgressDifficulty(): boolean {
+    if (this.lastGameWinner !== 'user') {
+      return false; // Only progress on user wins
+    }
+
+    // Progress after 5 wins at current difficulty
+    return this.gamesWonAtCurrentDifficulty >= 5;
+  }
+
+  /**
+   * Progress to next difficulty level
+   */
+  private progressDifficulty(): void {
+    if (this.currentDifficulty === 'easy') {
+      this.currentDifficulty = 'medium';
+    } else if (this.currentDifficulty === 'medium') {
+      this.currentDifficulty = 'hard';
+    }
+    // Hard is max, no further progression
+  }
+
+  /**
+   * Reset difficulty to easy (for when user exits after losing)
+   */
+  resetDifficulty(): void {
+    this.currentDifficulty = 'easy';
+    this.lastGameDifficulty = null;
+    this.lastGameWinner = null;
+    this.gamesWonAtCurrentDifficulty = 0;
+    // Reset indices to start fresh
+    this.priority1Index = 0;
+    this.priority2Index = 0;
+    this.priority3Index = 0;
+    this.resetRecentPlayers();
+  }
+
+  /**
+   * Get current difficulty state (for persistence)
+   */
+  getDifficultyState(): {
+    currentDifficulty: 'easy' | 'medium' | 'hard';
+    gamesWonAtCurrentDifficulty: number;
+    lastGameWinner: 'user' | 'ai' | 'draw' | null;
+  } {
+    return {
+      currentDifficulty: this.currentDifficulty,
+      gamesWonAtCurrentDifficulty: this.gamesWonAtCurrentDifficulty,
+      lastGameWinner: this.lastGameWinner,
+    };
+  }
+
+  /**
+   * Restore difficulty state (from persistence)
+   */
+  restoreDifficultyState(state: {
+    currentDifficulty: 'easy' | 'medium' | 'hard';
+    gamesWonAtCurrentDifficulty: number;
+    lastGameWinner: 'user' | 'ai' | 'draw' | null;
+  }): void {
+    console.log('GameEngine: Restoring difficulty state:', state);
+    this.currentDifficulty = state.currentDifficulty;
+    this.gamesWonAtCurrentDifficulty = state.gamesWonAtCurrentDifficulty;
+    this.lastGameWinner = state.lastGameWinner;
+    console.log('GameEngine: After restore, gamesWonAtCurrentDifficulty =', this.gamesWonAtCurrentDifficulty);
   }
 
   /**
    * Generate a new 4x4 tic-tac-toe game
-   * Uses progressive difficulty: starts with easy, progresses to medium, then hard
-   * Randomizes order within each difficulty level
-   * @param difficulty - Optional override, otherwise uses progressive difficulty
-   *   - Easy: At least 3 players with Priority 1 (famous)
+   * Difficulty progresses based on wins: Easy -> Medium -> Hard
+   * @param difficulty - Optional override (defaults to current difficulty)
+   *   - Easy: At least 3 players with Priority 1 (famous) - STRICT: only Priority 1 allowed
    *   - Medium: At least 2 players with Priority 1 + at least 1 with Priority 2
    *   - Hard: At least 1 player from each priority tier (P1, P2, P3) and total ≥ 6
    */
-  generateGame(difficulty?: 'easy' | 'medium' | 'hard'): Game {
-    // Reset recent players queue for every new game (allows reuse but still tries new players)
-    this.resetRecentPlayers();
+  generateGame(difficulty?: 'easy' | 'medium' | 'hard', forceReset?: boolean): Game {
+    // Always reshuffle when creating a new game for fresh randomization
+      this.resetRecentPlayers();
     
-    // Use progressive difficulty if not specified
-    const gameDifficulty = difficulty || this.getCurrentDifficulty();
+    // Reset difficulty and recent players ONLY if explicitly requested
+    // Don't reset based on lastGameWinner here - that's handled when the game completes
+    // The saved progress already has the correct state (reset on loss, preserved on win)
+    if (forceReset) {
+      // Reset difficulty to easy on explicit request (e.g., user exits after losing)
+      this.currentDifficulty = 'easy';
+      this.lastGameDifficulty = null;
+      this.lastGameWinner = null; // Clear after resetting
+      this.gamesWonAtCurrentDifficulty = 0; // Reset win counter
+      // Reset indices to start fresh
+      this.priority1Index = 0;
+      this.priority2Index = 0;
+      this.priority3Index = 0;
+    }
+    
+    // Track previous difficulty BEFORE any progression happens
+    const previousDifficultyBeforeProgression = this.currentDifficulty;
+    
+    // Check if we should progress difficulty after last win
+    if (this.shouldProgressDifficulty()) {
+      this.progressDifficulty();
+      // Reset win counter after progressing
+      this.gamesWonAtCurrentDifficulty = 0;
+    }
+    
+    // Use specified difficulty or current difficulty
+    // If no difficulty specified and this is first game, start at 'easy'
+    let gameDifficulty = difficulty || this.currentDifficulty || 'easy';
+    
+    // Check if we've run out of Priority 1 players in easy mode - auto-progress to medium
+    if (gameDifficulty === 'easy') {
+      const allPlayers = this.squadStore.getAll();
+      const priority1Players = allPlayers.filter(p => this.getPlayerPriority(p) === 1);
+      // With shuffled pools, all players are available (they're just in shuffled order)
+      const availablePriority1 = priority1Players;
+      if (availablePriority1.length < 3) {
+        // Not enough Priority 1 players - auto-progress to medium
+        console.log('Easy mode: Not enough Priority 1 players available, auto-progressing to medium');
+        gameDifficulty = 'medium';
+        this.currentDifficulty = 'medium';
+        // Already shuffled at the start of generateGame, no need to reshuffle again
+      }
+    }
+    
+    // Track previous difficulty for transitions (only if it changed)
+    // Use the difficulty before progression if it changed, otherwise use lastGameDifficulty
+    const previousDifficulty = (previousDifficultyBeforeProgression && previousDifficultyBeforeProgression !== gameDifficulty)
+      ? previousDifficultyBeforeProgression
+      : (this.lastGameDifficulty && this.lastGameDifficulty !== gameDifficulty 
+        ? this.lastGameDifficulty 
+        : undefined);
+    this.lastGameDifficulty = gameDifficulty;
     const allPlayers = this.squadStore.getAll();
     if (allPlayers.length < 9) {
       throw new Error('Not enough players. Need at least 9 players.');
@@ -397,29 +587,19 @@ export class GameEngine {
       const uniqueValues = new Set(allValues);
       let allCombinationsValid = allValues.length === uniqueValues.size; // No duplicates
       
-      // Also verify no duplicate values within rows when same type (extra safety)
+      // Also verify no duplicate values within rows (prevent any duplicates, regardless of type)
       if (allCombinationsValid) {
-        for (let i = 0; i < 3; i++) {
-          for (let j = i + 1; j < 3; j++) {
-            if (rowCategoryTypes[i] === rowCategoryTypes[j] && testRowValues[i] === testRowValues[j]) {
-              allCombinationsValid = false;
-              break;
-            }
-          }
-          if (!allCombinationsValid) break;
+        const rowValueSet = new Set(testRowValues);
+        if (rowValueSet.size !== testRowValues.length) {
+          allCombinationsValid = false;
         }
       }
       
-      // Verify no duplicate values within columns when same type (extra safety)
+      // Verify no duplicate values within columns (prevent any duplicates, regardless of type)
       if (allCombinationsValid) {
-        for (let i = 0; i < 3; i++) {
-          for (let j = i + 1; j < 3; j++) {
-            if (columnCategoryTypes[i] === columnCategoryTypes[j] && testColumnValues[i] === testColumnValues[j]) {
-              allCombinationsValid = false;
-              break;
-            }
-          }
-          if (!allCombinationsValid) break;
+        const colValueSet = new Set(testColumnValues);
+        if (colValueSet.size !== testColumnValues.length) {
+          allCombinationsValid = false;
         }
       }
 
@@ -444,9 +624,42 @@ export class GameEngine {
               return playerRowValue === rowValue && playerColValue === colValue;
             });
 
+            // Check if matches meet difficulty requirements
             if (matches.length === 0) {
               allCombinationsValid = false;
               break;
+            }
+            
+            // For Easy mode: must have at least one Priority 1 player
+            if (gameDifficulty === 'easy') {
+              const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+              if (priority1Matches.length === 0) {
+                allCombinationsValid = false;
+                break;
+              }
+            }
+            // For Medium mode: must have enough Priority 1 and Priority 2 players
+            else if (gameDifficulty === 'medium') {
+              const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+              const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+              // Need at least 5 Priority 1 and 4 Priority 2 total in the game, but for validation
+              // we just need to ensure this combination can contribute (has at least 1 Priority 1 or 2)
+              if (priority1Matches.length === 0 && priority2Matches.length === 0) {
+                allCombinationsValid = false;
+                break;
+              }
+            }
+            // For Hard mode: must have at least one Priority 1, 2, or 3 player (should always be true)
+            // but we validate to ensure we can meet the minimum requirements
+            else if (gameDifficulty === 'hard') {
+              const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+              const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+              const priority3Matches = matches.filter(p => this.getPlayerPriority(p) === 3);
+              // Need at least 3 of each priority total, but for validation we just check availability
+              if (priority1Matches.length === 0 && priority2Matches.length === 0 && priority3Matches.length === 0) {
+                allCombinationsValid = false;
+                break;
+              }
             }
           }
           if (!allCombinationsValid) break;
@@ -534,29 +747,19 @@ export class GameEngine {
         const uniqueValues = new Set(allValues);
         let allValid = allValues.length === uniqueValues.size; // No duplicates
         
-        // Also verify no duplicate values within rows when same type (extra safety)
+        // Also verify no duplicate values within rows (prevent any duplicates, regardless of type)
         if (allValid) {
-          for (let i = 0; i < 3; i++) {
-            for (let j = i + 1; j < 3; j++) {
-              if (rowCategoryTypes[i] === rowCategoryTypes[j] && testRowValues[i] === testRowValues[j]) {
-                allValid = false;
-                break;
-              }
-            }
-            if (!allValid) break;
+          const rowValueSet = new Set(testRowValues);
+          if (rowValueSet.size !== testRowValues.length) {
+            allValid = false;
           }
         }
         
-        // Verify no duplicate values within columns when same type (extra safety)
+        // Verify no duplicate values within columns (prevent any duplicates, regardless of type)
         if (allValid) {
-          for (let i = 0; i < 3; i++) {
-            for (let j = i + 1; j < 3; j++) {
-              if (columnCategoryTypes[i] === columnCategoryTypes[j] && testColumnValues[i] === testColumnValues[j]) {
-                allValid = false;
-                break;
-              }
-            }
-            if (!allValid) break;
+          const colValueSet = new Set(testColumnValues);
+          if (colValueSet.size !== testColumnValues.length) {
+            allValid = false;
           }
         }
         
@@ -584,6 +787,35 @@ export class GameEngine {
                 allValid = false;
                 break;
               }
+              
+              // Check if matches meet difficulty requirements
+              // For Easy mode: must have at least one Priority 1 player
+              if (gameDifficulty === 'easy') {
+                const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                if (priority1Matches.length === 0) {
+                  allValid = false;
+                  break;
+                }
+              }
+              // For Medium mode: must have at least one Priority 1 or 2 player
+              else if (gameDifficulty === 'medium') {
+                const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+                if (priority1Matches.length === 0 && priority2Matches.length === 0) {
+                  allValid = false;
+                  break;
+                }
+              }
+              // For Hard mode: must have at least one Priority 1, 2, or 3 player
+              else if (gameDifficulty === 'hard') {
+                const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+                const priority3Matches = matches.filter(p => this.getPlayerPriority(p) === 3);
+                if (priority1Matches.length === 0 && priority2Matches.length === 0 && priority3Matches.length === 0) {
+                  allValid = false;
+                  break;
+                }
+              }
             }
             if (!allValid) break;
           }
@@ -600,19 +832,9 @@ export class GameEngine {
       }
     }
 
-    // If we still couldn't find a combination, check if we should progress difficulty
+    // If we still couldn't find a combination, use fallback (don't auto-progress difficulty)
+    // Each game is independent - if we can't find valid combinations, use fallback values
     if (!foundValidCombination && attempts >= maxAttempts) {
-      // Try to progress to next difficulty
-      if (gameDifficulty === 'easy' && this.currentDifficulty === 'easy') {
-        this.currentDifficulty = 'medium';
-        // Retry with medium
-        return this.generateGame('medium');
-      } else if (gameDifficulty === 'medium' && this.currentDifficulty === 'medium') {
-        this.currentDifficulty = 'hard';
-        // Retry with hard
-        return this.generateGame('hard');
-      }
-      // If we're already at hard or explicitly requested a difficulty, use fallback
       // Reset to use the last attempted combination
       if (finalRowCategoryTypes.length === 0) {
         // Fallback: regenerate types one more time
@@ -719,6 +941,32 @@ export class GameEngine {
                 
                 if (matches.length === 0) {
                   allValid = false;
+                } else {
+                  // Check if matches meet difficulty requirements
+                  // For Easy mode: must have at least one Priority 1 player
+                  if (gameDifficulty === 'easy') {
+                    const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                    if (priority1Matches.length === 0) {
+                  allValid = false;
+                    }
+                  }
+                  // For Medium mode: must have at least one Priority 1 or 2 player
+                  else if (gameDifficulty === 'medium') {
+                    const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                    const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+                    if (priority1Matches.length === 0 && priority2Matches.length === 0) {
+                      allValid = false;
+                    }
+                  }
+                  // For Hard mode: must have at least one Priority 1, 2, or 3 player
+                  else if (gameDifficulty === 'hard') {
+                    const priority1Matches = matches.filter(p => this.getPlayerPriority(p) === 1);
+                    const priority2Matches = matches.filter(p => this.getPlayerPriority(p) === 2);
+                    const priority3Matches = matches.filter(p => this.getPlayerPriority(p) === 3);
+                    if (priority1Matches.length === 0 && priority2Matches.length === 0 && priority3Matches.length === 0) {
+                      allValid = false;
+                    }
+                  }
                 }
               }
             }
@@ -733,16 +981,33 @@ export class GameEngine {
       }
       
       // If we still couldn't find valid combinations, use fallback (first available values)
+      // But ensure no duplicates even in fallback
       if (!foundValid) {
         rowCategoryValues = [];
         columnCategoryValues = [];
+        const usedValues = new Set<string>();
+        
         for (const catType of rowCategoryTypes) {
           const values = this.getCategoryValuesByDifficulty(catType);
-          if (values.length > 0) rowCategoryValues.push(values[0].value);
+          // Find first value that hasn't been used yet
+          for (const valueItem of values) {
+            if (!usedValues.has(valueItem.value)) {
+              rowCategoryValues.push(valueItem.value);
+              usedValues.add(valueItem.value);
+              break;
+            }
+          }
         }
         for (const catType of columnCategoryTypes) {
           const values = this.getCategoryValuesByDifficulty(catType);
-          if (values.length > 0) columnCategoryValues.push(values[0].value);
+          // Find first value that hasn't been used yet
+          for (const valueItem of values) {
+            if (!usedValues.has(valueItem.value)) {
+              columnCategoryValues.push(valueItem.value);
+              usedValues.add(valueItem.value);
+              break;
+            }
+          }
         }
       }
     }
@@ -791,215 +1056,95 @@ export class GameEngine {
         const columnCategoryValue = columnCategoryValues[col];
         const columnCategoryType = columnCategoryTypes[col];
 
+        // Create a Set of already-selected player IDs to prevent duplicates
+        const selectedPlayerIds = new Set(selectedPlayers.map(p => this.getPlayerId(p)));
+
         // Find players matching both categories (use checkMatchDual for proper position matching)
+        // Exclude players that have already been selected
         const matchingPlayers = allPlayers.filter(p => {
-          return this.checkMatchDual(p, rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue);
+          const matchesCategories = this.checkMatchDual(p, rowCategoryType, rowCategoryValue, columnCategoryType, columnCategoryValue);
+          const notAlreadySelected = !selectedPlayerIds.has(this.getPlayerId(p));
+          return matchesCategories && notAlreadySelected;
         });
 
         if (matchingPlayers.length > 0) {
-          // Filter players by both recent use and recent combinations
-          const { best, good, okay, fallback } = this.filterPlayersByRecentUse(
-            matchingPlayers,
-            rowCategoryType,
-            rowCategoryValue,
-            columnCategoryType,
-            columnCategoryValue
-          );
-          
-          // Further categorize by priority within each group
-          const bestFamous = best.filter(p => this.getPlayerPriority(p) === 1);
-          const bestMedium = best.filter(p => this.getPlayerPriority(p) === 2);
-          const bestHard = best.filter(p => this.getPlayerPriority(p) === 3);
-          const goodFamous = good.filter(p => this.getPlayerPriority(p) === 1);
-          const goodMedium = good.filter(p => this.getPlayerPriority(p) === 2);
-          const goodHard = good.filter(p => this.getPlayerPriority(p) === 3);
-          const okayFamous = okay.filter(p => this.getPlayerPriority(p) === 1);
-          const okayMedium = okay.filter(p => this.getPlayerPriority(p) === 2);
-          const okayHard = okay.filter(p => this.getPlayerPriority(p) === 3);
-          const fallbackFamous = fallback.filter(p => this.getPlayerPriority(p) === 1);
-          const fallbackMedium = fallback.filter(p => this.getPlayerPriority(p) === 2);
-          const fallbackHard = fallback.filter(p => this.getPlayerPriority(p) === 3);
-          
           let selectedPlayer: PlayerRecord | null = null;
           
-          // Select based on difficulty requirements, with preference order: best > good > okay > fallback
+          // Select based on difficulty requirements using shuffled pools
           if (difficulty === 'easy') {
-            // Prefer Priority 1, but ensure we have at least 3 total
-            if (priority1Count < 3 || Math.random() > 0.3) {
-              // Try best first, then good, then okay, then fallback
-              if (bestFamous.length > 0) {
-                selectedPlayer = this.shuffle([...bestFamous])[0];
+            // Easy: Only Priority 1 players allowed
+            selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 1, 'easy');
+            if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 1) {
                 priority1Count++;
-              } else if (goodFamous.length > 0) {
-                selectedPlayer = this.shuffle([...goodFamous])[0];
-                priority1Count++;
-              } else if (okayFamous.length > 0) {
-                selectedPlayer = this.shuffle([...okayFamous])[0];
-                priority1Count++;
-              } else if (fallbackFamous.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackFamous])[0];
-                priority1Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else if (okay.length > 0) {
-                selectedPlayer = this.shuffle([...okay])[0];
-              } else {
-                selectedPlayer = this.shuffle([...fallback])[0];
-              }
-            } else {
-              // Prefer best players (not recently used, not in recent combinations)
-              if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else if (okay.length > 0) {
-                selectedPlayer = this.shuffle([...okay])[0];
-              } else {
-                selectedPlayer = this.shuffle([...fallback])[0];
-              }
             }
           } else if (difficulty === 'medium') {
-            // Need at least 2 Priority 1 and 1 Priority 2
-            if (priority1Count < 2) {
-              if (bestFamous.length > 0) {
-                selectedPlayer = this.shuffle([...bestFamous])[0];
+            // Medium: Need at least 5 Priority 1 and 4 Priority 2 per game
+            if (priority1Count < 5) {
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 1, 'medium');
+              if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 1) {
                 priority1Count++;
-              } else if (goodFamous.length > 0) {
-                selectedPlayer = this.shuffle([...goodFamous])[0];
-                priority1Count++;
-              } else if (okayFamous.length > 0) {
-                selectedPlayer = this.shuffle([...okayFamous])[0];
-                priority1Count++;
-              } else if (fallbackFamous.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackFamous])[0];
-                priority1Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
               }
-            } else if (priority2Count < 1) {
-              if (bestMedium.length > 0) {
-                selectedPlayer = this.shuffle([...bestMedium])[0];
+            } else if (priority2Count < 4) {
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 2, 'medium');
+              if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 2) {
                 priority2Count++;
-              } else if (goodMedium.length > 0) {
-                selectedPlayer = this.shuffle([...goodMedium])[0];
-                priority2Count++;
-              } else if (okayMedium.length > 0) {
-                selectedPlayer = this.shuffle([...okayMedium])[0];
-                priority2Count++;
-              } else if (fallbackMedium.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackMedium])[0];
-                priority2Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
               }
             } else {
-              // Prefer best famous, then best players
-              if (bestFamous.length > 0) {
-                selectedPlayer = this.shuffle([...bestFamous])[0];
-                priority1Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (goodFamous.length > 0) {
-                selectedPlayer = this.shuffle([...goodFamous])[0];
-                priority1Count++;
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
+              // Already have minimums, use any matching player (random from shuffled pool)
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, null, 'medium');
+              if (selectedPlayer) {
+                const priority = this.getPlayerPriority(selectedPlayer);
+                if (priority === 1) priority1Count++;
+                else if (priority === 2) priority2Count++;
               }
             }
           } else {
-            // Hard: need at least 1 player from Priority 1, 2, and 3
-            if (priority1Count < 1) {
-              if (bestFamous.length > 0) {
-                selectedPlayer = this.shuffle([...bestFamous])[0];
+            // Hard: Need at least 3 Priority 1, 3 Priority 2, and 3 Priority 3 per game
+            if (priority1Count < 3) {
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 1, 'hard');
+              if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 1) {
                 priority1Count++;
-              } else if (goodFamous.length > 0) {
-                selectedPlayer = this.shuffle([...goodFamous])[0];
-                priority1Count++;
-              } else if (okayFamous.length > 0) {
-                selectedPlayer = this.shuffle([...okayFamous])[0];
-                priority1Count++;
-              } else if (fallbackFamous.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackFamous])[0];
-                priority1Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
               }
-            } else if (priority2Count < 1) {
-              if (bestMedium.length > 0) {
-                selectedPlayer = this.shuffle([...bestMedium])[0];
+            } else if (priority2Count < 3) {
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 2, 'hard');
+              if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 2) {
                 priority2Count++;
-              } else if (goodMedium.length > 0) {
-                selectedPlayer = this.shuffle([...goodMedium])[0];
-                priority2Count++;
-              } else if (okayMedium.length > 0) {
-                selectedPlayer = this.shuffle([...okayMedium])[0];
-                priority2Count++;
-              } else if (fallbackMedium.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackMedium])[0];
-                priority2Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
               }
-            } else if (priority3Count < 1) {
-              if (bestHard.length > 0) {
-                selectedPlayer = this.shuffle([...bestHard])[0];
+            } else if (priority3Count < 3) {
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, 3, 'hard');
+              if (selectedPlayer && this.getPlayerPriority(selectedPlayer) === 3) {
                 priority3Count++;
-              } else if (goodHard.length > 0) {
-                selectedPlayer = this.shuffle([...goodHard])[0];
-                priority3Count++;
-              } else if (okayHard.length > 0) {
-                selectedPlayer = this.shuffle([...okayHard])[0];
-                priority3Count++;
-              } else if (fallbackHard.length > 0) {
-                selectedPlayer = this.shuffle([...fallbackHard])[0];
-                priority3Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
               }
             } else {
-              // Prefer best players by priority
-              if (bestFamous.length > 0) {
-                selectedPlayer = this.shuffle([...bestFamous])[0];
-                priority1Count++;
-              } else if (bestMedium.length > 0) {
-                selectedPlayer = this.shuffle([...bestMedium])[0];
-                priority2Count++;
-              } else if (bestHard.length > 0) {
-                selectedPlayer = this.shuffle([...bestHard])[0];
-                priority3Count++;
-              } else if (best.length > 0) {
-                selectedPlayer = this.shuffle([...best])[0];
-              } else if (goodFamous.length > 0) {
-                selectedPlayer = this.shuffle([...goodFamous])[0];
-                priority1Count++;
-              } else if (goodMedium.length > 0) {
-                selectedPlayer = this.shuffle([...goodMedium])[0];
-                priority2Count++;
-              } else if (goodHard.length > 0) {
-                selectedPlayer = this.shuffle([...goodHard])[0];
-                priority3Count++;
-              } else if (good.length > 0) {
-                selectedPlayer = this.shuffle([...good])[0];
-              } else {
-                selectedPlayer = this.shuffle([...matchingPlayers])[0];
+              // Already have minimums, use any matching player (random from shuffled pool)
+              selectedPlayer = this.getNextMatchingPlayerFromShuffled(matchingPlayers, null, 'hard');
+              if (selectedPlayer) {
+                const priority = this.getPlayerPriority(selectedPlayer);
+                if (priority === 1) priority1Count++;
+                else if (priority === 2) priority2Count++;
+                else if (priority === 3) priority3Count++;
               }
             }
           }
           
+          // Fallback: if no player found from shuffled pools, use first matching player
+          // BUT respect difficulty requirements - Easy mode must only use Priority 1
+          if (!selectedPlayer && matchingPlayers.length > 0) {
+            if (difficulty === 'easy') {
+              // In Easy mode, only use Priority 1 players
+              const priority1Matches = matchingPlayers.filter(p => this.getPlayerPriority(p) === 1);
+              if (priority1Matches.length > 0) {
+                selectedPlayer = priority1Matches[0];
+              }
+              // If no Priority 1 matches, leave selectedPlayer as null (will be handled below)
+            } else {
+              // Medium/Hard can use any matching player
+              selectedPlayer = matchingPlayers[0];
+            }
+          }
+          
+          // Only add player if one was selected (should always be the case if matchingPlayers.length > 0)
+          if (selectedPlayer) {
           selectedPlayers.push(selectedPlayer);
           selectedPlayerCombinations.push({
             player: selectedPlayer,
@@ -1013,6 +1158,26 @@ export class GameEngine {
             category: null,
             mark: null,
           });
+          } else {
+            // This shouldn't happen, but handle gracefully if all matching players were already selected
+            // If we're in easy mode and can't find a Priority 1 player, leave cell empty
+            // This indicates a problem with category selection - should not happen in normal gameplay
+            if (gameDifficulty === 'easy' && matchingPlayers.length > 0) {
+              console.warn('Easy mode: Could not find Priority 1 player for cell, but matching players exist. Leaving cell empty to maintain difficulty requirement.');
+              // Leave cell empty - do not use non-Priority 1 players in Easy mode
+              rowCells.push({
+                player: null,
+                category: null,
+                mark: null,
+              });
+            } else {
+              rowCells.push({
+                player: null,
+                category: null,
+                mark: null,
+              });
+            }
+          }
         } else {
           // No match - this should be rare if we selected good categories
           rowCells.push({
@@ -1026,19 +1191,8 @@ export class GameEngine {
       grid.push(rowCells);
     }
 
-    // Mark all selected players and their combinations as recently used (FIFO queues)
-    for (const player of selectedPlayers) {
-      this.markPlayerRecentlyUsed(player);
-    }
-    for (const combo of selectedPlayerCombinations) {
-      this.markCombinationRecentlyUsed(
-        combo.rowCategoryType,
-        combo.rowCategoryValue,
-        combo.columnCategoryType,
-        combo.columnCategoryValue,
-        combo.player
-      );
-    }
+    // Calculate progress toward next level (based on games won)
+    const progressToNextLevel = this.calculateProgressToNextLevel();
 
     return {
       id: `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1051,6 +1205,9 @@ export class GameEngine {
       winner: null,
       isComplete: false,
       size: 4,
+      difficulty: gameDifficulty,
+      previousDifficulty: previousDifficulty || undefined,
+      progressToNextLevel,
       createdAt: new Date(),
     };
   }
@@ -1574,12 +1731,27 @@ export class GameEngine {
     const winner = this.checkWinner(game);
     
     if (winner) {
-      // Track the game result for resetting players on loss
+      // Track the game result for difficulty progression
       this.lastGameWinner = winner;
+      
+      // Update win counter for progress
+      if (winner === 'user') {
+        this.gamesWonAtCurrentDifficulty++;
+      } else {
+        // Reset win counter on loss or draw
+        this.gamesWonAtCurrentDifficulty = 0;
+      }
+      
+      // Calculate progress (only for wins)
+      const progressToNextLevel = winner === 'user' 
+        ? this.calculateProgressToNextLevel() 
+        : 0; // Reset to 0 on loss
+      
       return {
         ...game,
         winner,
         isComplete: true,
+        progressToNextLevel,
       };
     }
 
@@ -1589,16 +1761,27 @@ export class GameEngine {
     );
 
     if (allFilled) {
-      // Track the game result for resetting players on loss
+      // Track the game result for difficulty progression
       this.lastGameWinner = 'draw';
+      
+      // Reset win counter on draw (treat as loss)
+      this.gamesWonAtCurrentDifficulty = 0;
+      const progressToNextLevel = 0;
+      
       return {
         ...game,
         isComplete: true,
         winner: 'draw',
+        progressToNextLevel,
       };
     }
 
-    return game;
+    // Update progress for ongoing game
+    const progressToNextLevel = this.calculateProgressToNextLevel();
+    return {
+      ...game,
+      progressToNextLevel,
+    };
   }
 
   /**
